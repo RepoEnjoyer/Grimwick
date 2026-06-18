@@ -9,6 +9,7 @@ import { StartScreen } from './StartScreen';
 import { UpgradeScreen } from './UpgradeScreen';
 import { DeathScreen } from './DeathScreen';
 import { CryptHub } from './CryptHub';
+import { PauseMenu } from './PauseMenu';
 
 export function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -138,6 +139,36 @@ export function GameCanvas() {
     setProgress(loadProgress());
   };
 
+  // Pause menu handlers
+  const handlePauseResume = () => {
+    engineRef.current?.resume();
+  };
+  const handlePauseRestart = () => {
+    engineRef.current?.resume();
+    startNewRun();
+  };
+  const handlePauseQuit = () => {
+    engineRef.current?.returnToMenu();
+  };
+  const getBuildSummary = useCallback(() => {
+    return (
+      engineRef.current?.getBuildSummary() ?? {
+        hp: 0,
+        maxHp: 0,
+        souls: 0,
+        wandLevel: 1,
+        wandType: 'Bone Wand',
+        kills: 0,
+        minions: 0,
+        maxMinions: 0,
+        room: 1,
+        wave: '1/2',
+        skills: [],
+        relics: [],
+      }
+    );
+  }, []);
+
   return (
     <div className="relative w-full h-screen bg-black overflow-hidden flex items-center justify-center select-none">
       <div
@@ -199,6 +230,16 @@ export function GameCanvas() {
             result={deathResult}
             onReturn={handleReturnToMenu}
             onRestart={startNewRun}
+          />
+        )}
+
+        {/* Pause menu */}
+        {phase === 'paused' && (
+          <PauseMenu
+            getSummary={getBuildSummary}
+            onResume={handlePauseResume}
+            onRestart={handlePauseRestart}
+            onReturnToMenu={handlePauseQuit}
           />
         )}
 

@@ -3,6 +3,7 @@
 export type GamePhase =
   | 'menu'
   | 'playing'
+  | 'paused'
   | 'upgrade'
   | 'dead'
   | 'crypt';
@@ -58,6 +59,14 @@ export interface Player {
   homingSoulLevel: number; // new: homing soul projectiles
   volatileBonesLevel: number; // new: minions explode on death
   splitterBoltLevel: number; // new: bolts split on hit
+  // ===== NEW WAND POWERS =====
+  chainLightningLevel: number; // wand shots arc lightning
+  frostBoltLevel: number; // hits slow enemies
+  critChance: number; // % chance for crit
+  critMult: number; // crit damage multiplier
+  executeThreshold: number; // instant-kill enemies below this HP fraction
+  ricochetLevel: number; // bounces off walls
+  minionHpMult: number; // multiplier for minion HP (from Sturdy Bones)
 
   // soul
   soulPickupRange: number;
@@ -78,6 +87,11 @@ export interface Player {
   commandActive: boolean;
   boneBeastActive: boolean; // new: tanky bone beast minion
   wraithActive: boolean; // new: fast flying wraith minion
+  // ===== NEW NECROMANCY POWERS =====
+  boneGolemActive: boolean; // huge tanky golem minion
+  plagueBatsLevel: number; // number of plague bats
+  necroticExplosionLevel: number; // corpses explode on death
+  markOfDeathLevel: number; // chance to mark enemies for +50% dmg
 
   // survival
   soulDrainChance: number;
@@ -97,6 +111,12 @@ export interface Player {
   vampiricAuraLevel: number; // new: passive lifesteal aura
   spiritWalkLevel: number; // new: passive dodge chance
   boneStormLevel: number; // new: bones orbit player damaging enemies
+  // ===== NEW SURVIVAL POWERS =====
+  soulLinkLevel: number; // % damage redirected to minions
+  boneWallLevel: number; // periodically spawn bone walls
+  boneWallTimer: number;
+  ironBonesLevel: number; // flat damage reduction
+  vampiricTouchLevel: number; // heal when enemies die near you
 
   // ultimates (all auto-triggered now)
   armyOfDeadTimer: number;
@@ -110,6 +130,17 @@ export interface Player {
   // soul meter (new) - fills as you collect souls, triggers Soul Nova when full
   soulMeter: number;
   soulMeterMax: number;
+
+  // ===== NEW UNIQUE POWERS (all auto-triggered) =====
+  blackHoleLevel: number;
+  blackHoleTimer: number;
+  meteorLevel: number;
+  meteorTimer: number;
+  timeWarpLevel: number; // periodic slow aura
+  timeWarpTimer: number;
+  timeWarpActive: number; // active slow timer
+  earthquakeLevel: number;
+  earthquakeTimer: number;
 
   // bookkeeping
   lastFireTime: number;
@@ -132,13 +163,17 @@ export interface Projectile {
   chainLeft: number;
   hitSet: Set<number>;
   fromPlayer: boolean;
-  kind: 'bolt' | 'skull' | 'holy' | 'knife' | 'familiar' | 'beam' | 'deathray' | 'sunbeam' | 'homing' | 'splitter' | 'soul_nova';
+  kind: 'bolt' | 'skull' | 'holy' | 'knife' | 'familiar' | 'beam' | 'deathray' | 'sunbeam' | 'homing' | 'splitter' | 'soul_nova' | 'meteor' | 'soulbomb' | 'lightning';
   dotChance?: number;
   dotDamage?: number;
   color: string;
   homing?: boolean;
   target?: number; // enemy id
   splitterLevel?: number; // bolts split on hit
+  frostLevel?: number; // applies slow on hit
+  chainLightningLevel?: number; // arcs lightning on hit
+  isCrit?: boolean;
+  ricochetLeft?: number; // bounces remaining
 }
 
 export interface Enemy {
@@ -162,6 +197,9 @@ export interface Enemy {
   phaseActive: boolean;
   shielded: boolean;
   shieldHp: number;
+  slowTimer: number; // frost/time warp slow effect
+  slowMult: number; // multiplier when slowed (0.5 = half speed)
+  markedTimer: number; // marked for death (takes bonus damage)
   isBoss?: boolean;
   bossKind?: BossKind;
   bossPhase?: number;
@@ -187,7 +225,7 @@ export interface Minion {
   life: number;
   attackCooldown: number;
   attackInterval: number;
-  kind: 'skeleton' | 'servant' | 'crawler' | 'familiar' | 'army' | 'beast' | 'wraith';
+  kind: 'skeleton' | 'servant' | 'crawler' | 'familiar' | 'army' | 'beast' | 'wraith' | 'golem' | 'bat';
   target?: number;
   shootCooldown?: number;
   isFamiliar?: boolean;
@@ -215,7 +253,7 @@ export interface Particle {
   maxLife: number;
   radius: number;
   color: string;
-  kind: 'spark' | 'bone' | 'soul' | 'smoke' | 'magic';
+  kind: 'spark' | 'bone' | 'soul' | 'smoke' | 'magic' | 'lightning' | 'frost' | 'meteor_trail';
 }
 
 export interface CursedGroundCircle {
@@ -227,6 +265,51 @@ export interface CursedGroundCircle {
   tickInterval: number;
   tickTimer: number;
   hitSet: Set<number>;
+}
+
+// ===== New entity types for unique powers =====
+export interface BlackHole {
+  x: number;
+  y: number;
+  radius: number;
+  pullRadius: number;
+  damage: number;
+  life: number;
+  maxLife: number;
+  tickInterval: number;
+  tickTimer: number;
+}
+
+export interface BoneWall {
+  x: number;
+  y: number;
+  hp: number;
+  maxHp: number;
+  radius: number;
+  life: number;
+  angle: number; // orientation
+}
+
+export interface Meteor {
+  x: number; // current x
+  y: number; // current y
+  targetX: number;
+  targetY: number;
+  startY: number;
+  damage: number;
+  radius: number;
+  life: number; // time until impact
+  exploded: boolean;
+}
+
+export interface LightningArc {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  life: number;
+  maxLife: number;
+  color: string;
 }
 
 export interface FloatingText {
@@ -316,6 +399,16 @@ export interface HudSnapshot {
     boneShieldMax: number;
     graveCall: number;
     graveCallMax: number;
+    blackHole: number;
+    blackHoleMax: number;
+    meteor: number;
+    meteorMax: number;
+    timeWarp: number;
+    timeWarpMax: number;
+    earthquake: number;
+    earthquakeMax: number;
+    boneWall: number;
+    boneWallMax: number;
   };
   ultimatesActive: {
     army: number;

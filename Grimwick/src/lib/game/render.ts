@@ -1,6 +1,17 @@
 // Canvas rendering: dark fantasy pixel-art-ish style with glow effects
 import { GameEngine, GAME_W, GAME_H } from './engine';
-import type { Enemy, Minion, Particle, Player, Projectile, Soul } from './types';
+import type {
+  BlackHole,
+  BoneWall,
+  Enemy,
+  LightningArc,
+  Meteor,
+  Minion,
+  Particle,
+  Player,
+  Projectile,
+  Soul,
+} from './types';
 
 // Draw a glowing circle with shadow blur
 function glowCircle(
@@ -46,6 +57,16 @@ export function drawGame(engine: GameEngine) {
     drawCursedGround(ctx, cg, t);
   }
 
+  // ===== NEW: black holes (under entities) =====
+  for (const bh of engine.blackHoles) {
+    drawBlackHole(ctx, bh, t);
+  }
+
+  // ===== NEW: bone walls (under entities) =====
+  for (const bw of engine.boneWalls) {
+    drawBoneWall(ctx, bw, t);
+  }
+
   // ===== souls =====
   for (const s of engine.souls) {
     drawSoul(ctx, s, t);
@@ -71,6 +92,24 @@ export function drawGame(engine: GameEngine) {
   // ===== enemies =====
   for (const e of engine.enemies) {
     drawEnemy(ctx, e, t);
+    // NEW: slow effect overlay
+    if (e.slowTimer > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.4;
+      glowCircle(ctx, e.x, e.y, e.radius + 2, '#80c0ff', 8);
+      ctx.restore();
+    }
+    // NEW: marked for death overlay
+    if (e.markedTimer > 0) {
+      ctx.save();
+      ctx.strokeStyle = '#ff4060';
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.6 + Math.sin(t * 10) * 0.3;
+      ctx.beginPath();
+      ctx.arc(e.x, e.y, e.radius + 4, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // ===== Aura of Decay (under player) =====
@@ -92,6 +131,16 @@ export function drawGame(engine: GameEngine) {
   }
   for (const pr of engine.enemyProjectiles) {
     drawEnemyProjectile(ctx, pr, t);
+  }
+
+  // ===== NEW: meteors (above projectiles) =====
+  for (const m of engine.meteors) {
+    drawMeteor(ctx, m, t);
+  }
+
+  // ===== NEW: lightning arcs (above everything) =====
+  for (const la of engine.lightningArcs) {
+    drawLightningArc(ctx, la);
   }
 
   // ===== particles =====
@@ -377,6 +426,66 @@ function drawMinion(ctx: CanvasRenderingContext2D, m: Minion, t: number) {
     ctx.fillRect(-3, 11, 3, 5);
     ctx.fillRect(3, 10, 3, 4);
     ctx.fillRect(7, 11, 3, 4);
+  } else if (m.kind === 'golem') {
+    // Bone Golem — huge hulking bone construct
+    glowCircle(ctx, 0, 0, 26, '#a08060', 14);
+    // body (big torso)
+    ctx.fillStyle = '#d0c0a0';
+    ctx.fillRect(-18, -10, 36, 22);
+    // head (small skull on top)
+    ctx.fillRect(-8, -22, 16, 12);
+    // arms (huge)
+    ctx.fillRect(-24, -6, 8, 18);
+    ctx.fillRect(16, -6, 8, 18);
+    // legs
+    ctx.fillRect(-14, 12, 8, 12);
+    ctx.fillRect(6, 12, 8, 12);
+    // bone plates
+    ctx.fillStyle = '#a89878';
+    ctx.fillRect(-18, -10, 36, 3);
+    ctx.fillRect(-18, 0, 36, 3);
+    ctx.fillRect(-18, 8, 36, 3);
+    // glowing eyes
+    glowCircle(ctx, -3, -16, 2.5, '#ff4040', 10);
+    glowCircle(ctx, 3, -16, 2.5, '#ff4040', 10);
+    // shoulder spikes
+    ctx.fillStyle = '#8a7858';
+    ctx.beginPath();
+    ctx.moveTo(-24, -6);
+    ctx.lineTo(-30, -14);
+    ctx.lineTo(-18, -6);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(24, -6);
+    ctx.lineTo(30, -14);
+    ctx.lineTo(18, -6);
+    ctx.fill();
+  } else if (m.kind === 'bat') {
+    // Plague Bat — small flying creature
+    const flap = Math.sin(t * 20 + m.id) * 4;
+    glowCircle(ctx, 0, 0, 8, '#604080', 10);
+    // body
+    ctx.fillStyle = '#3a2050';
+    ctx.beginPath();
+    ctx.arc(0, 0, 5, 0, Math.PI * 2);
+    ctx.fill();
+    // wings (flapping)
+    ctx.fillStyle = '#604080';
+    ctx.beginPath();
+    ctx.moveTo(-3, 0);
+    ctx.lineTo(-14, -3 + flap);
+    ctx.lineTo(-10, 3);
+    ctx.closePath();
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(3, 0);
+    ctx.lineTo(14, -3 + flap);
+    ctx.lineTo(10, 3);
+    ctx.closePath();
+    ctx.fill();
+    // eyes
+    glowCircle(ctx, -1.5, -1, 1, '#ff4060', 5);
+    glowCircle(ctx, 1.5, -1, 1, '#ff4060', 5);
   } else {
     // regular skeleton minion
     drawSkeletonBody(ctx, 0, 0, 10, '#e0d8c8', '#b58cff', false);
@@ -968,6 +1077,21 @@ function drawParticle(ctx: CanvasRenderingContext2D, p: Particle) {
   } else if (p.kind === 'smoke') {
     ctx.globalAlpha = a * 0.5;
     glowCircle(ctx, p.x, p.y, p.radius * 2, p.color, 4);
+  } else if (p.kind === 'frost') {
+    // frost: small crystal sparkle
+    glowCircle(ctx, p.x, p.y, p.radius, p.color, 6);
+    ctx.strokeStyle = p.color;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(p.x - p.radius, p.y);
+    ctx.lineTo(p.x + p.radius, p.y);
+    ctx.moveTo(p.x, p.y - p.radius);
+    ctx.lineTo(p.x, p.y + p.radius);
+    ctx.stroke();
+  } else if (p.kind === 'meteor_trail') {
+    // fiery trail
+    glowCircle(ctx, p.x, p.y, p.radius, p.color, 10);
+    glowCircle(ctx, p.x, p.y, p.radius * 0.5, '#ffd040', 6);
   }
   ctx.restore();
 }
@@ -1067,4 +1191,166 @@ function drawBoneStorm(
     ctx.fillRect(2, -2, 2, 4);
     ctx.restore();
   }
+}
+
+// ---------- NEW: Black Hole ----------
+function drawBlackHole(
+  ctx: CanvasRenderingContext2D,
+  bh: BlackHole,
+  t: number
+) {
+  ctx.save();
+  // pull radius ring (faint)
+  ctx.globalAlpha = 0.15;
+  ctx.strokeStyle = '#a040ff';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([8, 8]);
+  ctx.lineDashOffset = -t * 30;
+  ctx.beginPath();
+  ctx.arc(bh.x, bh.y, bh.pullRadius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // outer swirl
+  ctx.globalAlpha = 0.6;
+  const swirl = ctx.createRadialGradient(
+    bh.x,
+    bh.y,
+    0,
+    bh.x,
+    bh.y,
+    bh.pullRadius
+  );
+  swirl.addColorStop(0, 'rgba(40, 0, 80, 0.8)');
+  swirl.addColorStop(0.5, 'rgba(80, 20, 120, 0.4)');
+  swirl.addColorStop(1, 'rgba(20, 0, 40, 0)');
+  ctx.fillStyle = swirl;
+  ctx.beginPath();
+  ctx.arc(bh.x, bh.y, bh.pullRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // event horizon (dark core)
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = '#000000';
+  ctx.beginPath();
+  ctx.arc(bh.x, bh.y, bh.radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // accretion disk (purple ring)
+  ctx.strokeStyle = '#c060ff';
+  ctx.lineWidth = 3;
+  ctx.shadowColor = '#c060ff';
+  ctx.shadowBlur = 20;
+  ctx.beginPath();
+  ctx.arc(bh.x, bh.y, bh.radius + 3, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+// ---------- NEW: Bone Wall ----------
+function drawBoneWall(
+  ctx: CanvasRenderingContext2D,
+  bw: BoneWall,
+  t: number
+) {
+  ctx.save();
+  ctx.translate(bw.x, bw.y);
+  ctx.rotate(bw.angle);
+  // shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.beginPath();
+  ctx.ellipse(0, bw.radius * 0.7, bw.radius * 0.9, bw.radius * 0.3, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // base mound
+  ctx.fillStyle = '#5a5040';
+  ctx.beginPath();
+  ctx.arc(0, 0, bw.radius, 0, Math.PI * 2);
+  ctx.fill();
+  // bone spikes radiating
+  ctx.fillStyle = '#e8e0d0';
+  ctx.shadowColor = '#a89878';
+  ctx.shadowBlur = 4;
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + t * 0.3;
+    const r1 = bw.radius * 0.6;
+    const r2 = bw.radius * 1.2;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * r1, Math.sin(a) * r1);
+    ctx.lineTo(Math.cos(a + 0.1) * r2, Math.sin(a + 0.1) * r2);
+    ctx.lineTo(Math.cos(a - 0.1) * r2, Math.sin(a - 0.1) * r2);
+    ctx.closePath();
+    ctx.fill();
+  }
+  // HP bar
+  if (bw.hp < bw.maxHp) {
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(-bw.radius, -bw.radius - 8, bw.radius * 2, 3);
+    ctx.fillStyle = '#e0e0d0';
+    ctx.fillRect(-bw.radius, -bw.radius - 8, bw.radius * 2 * (bw.hp / bw.maxHp), 3);
+  }
+  ctx.restore();
+}
+
+// ---------- NEW: Meteor ----------
+function drawMeteor(
+  ctx: CanvasRenderingContext2D,
+  m: Meteor,
+  t: number
+) {
+  if (m.exploded) return;
+  ctx.save();
+  ctx.translate(m.x, m.y);
+  // trailing flame
+  ctx.fillStyle = 'rgba(255, 120, 30, 0.4)';
+  ctx.beginPath();
+  ctx.ellipse(0, -20, m.radius * 0.6, m.radius * 1.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // meteor core
+  glowCircle(ctx, 0, 0, m.radius, '#ff6020', 20);
+  glowCircle(ctx, 0, 0, m.radius * 0.7, '#ffa040', 14);
+  ctx.fillStyle = '#ffd060';
+  ctx.beginPath();
+  ctx.arc(0, 0, m.radius * 0.4, 0, Math.PI * 2);
+  ctx.fill();
+  // rocky details
+  ctx.fillStyle = '#804020';
+  ctx.fillRect(-m.radius * 0.3, -m.radius * 0.2, m.radius * 0.4, m.radius * 0.3);
+  ctx.fillRect(m.radius * 0.1, m.radius * 0.1, m.radius * 0.3, m.radius * 0.2);
+  ctx.restore();
+}
+
+// ---------- NEW: Lightning Arc ----------
+function drawLightningArc(
+  ctx: CanvasRenderingContext2D,
+  la: LightningArc
+) {
+  const alpha = la.life / la.maxLife;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = la.color;
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = la.color;
+  ctx.shadowBlur = 12;
+  // jagged line
+  const segments = 6;
+  ctx.beginPath();
+  ctx.moveTo(la.x1, la.y1);
+  for (let i = 1; i < segments; i++) {
+    const tt = i / segments;
+    const x = la.x1 + (la.x2 - la.x1) * tt + (Math.random() - 0.5) * 14;
+    const y = la.y1 + (la.y2 - la.y1) * tt + (Math.random() - 0.5) * 14;
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(la.x2, la.y2);
+  ctx.stroke();
+  // bright core
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 1;
+  ctx.shadowBlur = 6;
+  ctx.beginPath();
+  ctx.moveTo(la.x1, la.y1);
+  ctx.lineTo(la.x2, la.y2);
+  ctx.stroke();
+  ctx.restore();
 }

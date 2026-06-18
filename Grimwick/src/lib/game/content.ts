@@ -46,6 +46,13 @@ export function createStartingPlayer(permanentBonuses: {
     homingSoulLevel: 0,
     volatileBonesLevel: 0,
     splitterBoltLevel: 0,
+    chainLightningLevel: 0,
+    frostBoltLevel: 0,
+    critChance: 0,
+    critMult: 3,
+    executeThreshold: 0,
+    ricochetLevel: 0,
+    minionHpMult: 1,
 
     soulPickupRange: 80,
     soulGainMult: 1 + permanentBonuses.soulGainBonus * 0.15,
@@ -64,6 +71,10 @@ export function createStartingPlayer(permanentBonuses: {
     commandActive: false,
     boneBeastActive: false,
     wraithActive: false,
+    boneGolemActive: false,
+    plagueBatsLevel: 0,
+    necroticExplosionLevel: 0,
+    markOfDeathLevel: 0,
 
     soulDrainChance: 0,
     soulDrainAmount: 1,
@@ -82,6 +93,11 @@ export function createStartingPlayer(permanentBonuses: {
     vampiricAuraLevel: 0,
     spiritWalkLevel: 0,
     boneStormLevel: 0,
+    soulLinkLevel: 0,
+    boneWallLevel: 0,
+    boneWallTimer: 0,
+    ironBonesLevel: 0,
+    vampiricTouchLevel: 0,
 
     armyOfDeadTimer: 0,
     armyOfDeadCooldown: 0,
@@ -93,6 +109,16 @@ export function createStartingPlayer(permanentBonuses: {
 
     soulMeter: 0,
     soulMeterMax: 50,
+
+    blackHoleLevel: 0,
+    blackHoleTimer: 0,
+    meteorLevel: 0,
+    meteorTimer: 0,
+    timeWarpLevel: 0,
+    timeWarpTimer: 0,
+    timeWarpActive: 0,
+    earthquakeLevel: 0,
+    earthquakeTimer: 0,
 
     lastFireTime: 0,
     iframes: 0,
@@ -625,6 +651,7 @@ export const UPGRADES: Upgrade[] = [
     rarity: 'common',
     icon: '🛡',
     apply: (p) => {
+      p.minionHpMult *= 1.5;
       p.minionDuration *= 1.2;
     },
   },
@@ -704,6 +731,240 @@ export const UPGRADES: Upgrade[] = [
     icon: '🔋',
     apply: (p) => {
       p.skills.add('soul_battery');
+    },
+  },
+
+  // ===== NEW WAND POWERS =====
+  {
+    id: 'chain_lightning',
+    name: 'Chain Lightning',
+    description: 'Wand hits arc lightning to 2 nearby enemies.',
+    path: 'wand',
+    rarity: 'rare',
+    icon: '⚡',
+    requires: (p) => p.chainLightningLevel < 3,
+    apply: (p) => {
+      p.chainLightningLevel += 1;
+      p.wandLevel += 1;
+      p.skills.add('chain_lightning');
+    },
+  },
+  {
+    id: 'frost_bolt',
+    name: 'Frost Bolt',
+    description: 'Wand hits slow enemies by 50% for 2s.',
+    path: 'wand',
+    rarity: 'rare',
+    icon: '❄',
+    requires: (p) => p.frostBoltLevel < 3,
+    apply: (p) => {
+      p.frostBoltLevel += 1;
+      p.wandLevel += 1;
+      p.skills.add('frost_bolt');
+    },
+  },
+  {
+    id: 'critical_strike',
+    name: 'Critical Strike',
+    description: '+15% crit chance (3x damage).',
+    path: 'wand',
+    rarity: 'rare',
+    icon: '✸',
+    requires: (p) => p.critChance < 0.45,
+    apply: (p) => {
+      p.critChance += 0.15;
+      p.skills.add('critical_strike');
+    },
+  },
+  {
+    id: 'execute',
+    name: 'Execute',
+    description: 'Instantly kill enemies below 10% HP (+5% per stack).',
+    path: 'wand',
+    rarity: 'epic',
+    icon: '⚔',
+    requires: (p) => p.executeThreshold < 0.3,
+    apply: (p) => {
+      p.executeThreshold += 0.1;
+      p.skills.add('execute');
+    },
+  },
+  {
+    id: 'ricochet',
+    name: 'Ricochet',
+    description: 'Wand shots bounce off walls (+1 bounce per level).',
+    path: 'wand',
+    rarity: 'rare',
+    icon: '↺',
+    requires: (p) => p.ricochetLevel < 3,
+    apply: (p) => {
+      p.ricochetLevel += 1;
+      p.wandLevel += 1;
+      p.skills.add('ricochet');
+    },
+  },
+
+  // ===== NEW NECROMANCY POWERS =====
+  {
+    id: 'bone_golem',
+    name: 'Bone Golem',
+    description: 'Summon a massive golem (400 HP, huge damage).',
+    path: 'necromancy',
+    rarity: 'epic',
+    icon: '🗿',
+    requires: (p) => !p.boneGolemActive && p.maxMinions >= 4,
+    apply: (p) => {
+      p.boneGolemActive = true;
+      p.maxMinions += 1;
+      p.skills.add('bone_golem');
+    },
+  },
+  {
+    id: 'plague_bats',
+    name: 'Plague Bats',
+    description: 'Summon 3 flying bats that swarm enemies.',
+    path: 'necromancy',
+    rarity: 'epic',
+    icon: '🦇',
+    requires: (p) => p.plagueBatsLevel < 3,
+    apply: (p) => {
+      p.plagueBatsLevel += 1;
+      p.maxMinions += 3;
+      p.skills.add('plague_bats');
+    },
+  },
+  {
+    id: 'necrotic_explosion',
+    name: 'Necrotic Explosion',
+    description: 'Slain enemies explode, damaging nearby foes.',
+    path: 'necromancy',
+    rarity: 'rare',
+    icon: '💥',
+    requires: (p) => p.necroticExplosionLevel < 3,
+    apply: (p) => {
+      p.necroticExplosionLevel += 1;
+      p.skills.add('necrotic_explosion');
+    },
+  },
+  {
+    id: 'mark_of_death',
+    name: 'Mark of Death',
+    description: '20% chance to mark enemies (they take +50% damage).',
+    path: 'necromancy',
+    rarity: 'rare',
+    icon: '☠',
+    requires: (p) => p.markOfDeathLevel < 3,
+    apply: (p) => {
+      p.markOfDeathLevel += 1;
+      p.skills.add('mark_of_death');
+    },
+  },
+
+  // ===== NEW SURVIVAL POWERS =====
+  {
+    id: 'soul_link',
+    name: 'Soul Link',
+    description: '20% of damage you take is redirected to minions.',
+    path: 'survival',
+    rarity: 'rare',
+    icon: '⛓',
+    requires: (p) => p.soulLinkLevel < 3,
+    apply: (p) => {
+      p.soulLinkLevel += 1;
+      p.skills.add('soul_link');
+    },
+  },
+  {
+    id: 'bone_wall',
+    name: 'Bone Wall',
+    description: 'AUTO: Every 8s, raise bone barriers that block enemies.',
+    path: 'survival',
+    rarity: 'rare',
+    icon: '🧱',
+    requires: (p) => p.boneWallLevel < 3,
+    apply: (p) => {
+      p.boneWallLevel += 1;
+      p.skills.add('bone_wall');
+    },
+  },
+  {
+    id: 'iron_bones',
+    name: 'Iron Bones',
+    description: 'Reduce all damage taken by 3 (flat).',
+    path: 'survival',
+    rarity: 'common',
+    icon: '🛡',
+    requires: (p) => p.ironBonesLevel < 5,
+    apply: (p) => {
+      p.ironBonesLevel += 1;
+      p.skills.add('iron_bones');
+    },
+  },
+  {
+    id: 'vampiric_touch',
+    name: 'Vampiric Touch',
+    description: 'Heal 1 HP for every enemy that dies near you.',
+    path: 'survival',
+    rarity: 'rare',
+    icon: '🩸',
+    requires: (p) => p.vampiricTouchLevel < 3,
+    apply: (p) => {
+      p.vampiricTouchLevel += 1;
+      p.skills.add('vampiric_touch');
+    },
+  },
+
+  // ===== NEW UNIQUE POWERS (auto-triggered) =====
+  {
+    id: 'black_hole',
+    name: 'Black Hole',
+    description: 'AUTO: Every 15s, open a singularity that pulls and shreds enemies.',
+    path: 'generic',
+    rarity: 'epic',
+    icon: '⚫',
+    requires: (p) => p.blackHoleLevel < 3,
+    apply: (p) => {
+      p.blackHoleLevel += 1;
+      p.skills.add('black_hole');
+    },
+  },
+  {
+    id: 'meteor_strike',
+    name: 'Meteor Strike',
+    description: 'AUTO: Every 5s, a meteor crashes on a random enemy.',
+    path: 'generic',
+    rarity: 'epic',
+    icon: '☄',
+    requires: (p) => p.meteorLevel < 3,
+    apply: (p) => {
+      p.meteorLevel += 1;
+      p.skills.add('meteor_strike');
+    },
+  },
+  {
+    id: 'time_warp',
+    name: 'Time Warp',
+    description: 'AUTO: Every 18s, slow ALL enemies for 4s.',
+    path: 'generic',
+    rarity: 'epic',
+    icon: '⏱',
+    requires: (p) => p.timeWarpLevel < 3,
+    apply: (p) => {
+      p.timeWarpLevel += 1;
+      p.skills.add('time_warp');
+    },
+  },
+  {
+    id: 'earthquake',
+    name: 'Earthquake',
+    description: 'AUTO: Every 12s, shockwave damages and knocks back all enemies.',
+    path: 'generic',
+    rarity: 'epic',
+    icon: '🌐',
+    requires: (p) => p.earthquakeLevel < 3,
+    apply: (p) => {
+      p.earthquakeLevel += 1;
+      p.skills.add('earthquake');
     },
   },
 ];

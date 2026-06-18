@@ -55,6 +55,23 @@ const SKILL_NAMES: Record<string, string> = {
   echo_wand: 'Echo Wand',
   crown_of_thorns: 'Crown of Thorns',
   undying_heart: 'Undying Heart',
+  chain_lightning: 'Chain Lightning',
+  frost_bolt: 'Frost Bolt',
+  critical_strike: 'Critical Strike',
+  execute: 'Execute',
+  ricochet: 'Ricochet',
+  bone_golem: 'Bone Golem',
+  plague_bats: 'Plague Bats',
+  necrotic_explosion: 'Necrotic Explosion',
+  mark_of_death: 'Mark of Death',
+  soul_link: 'Soul Link',
+  bone_wall: 'Bone Wall',
+  iron_bones: 'Iron Bones',
+  vampiric_touch: 'Vampiric Touch',
+  black_hole: 'Black Hole',
+  meteor_strike: 'Meteor Strike',
+  time_warp: 'Time Warp',
+  earthquake: 'Earthquake',
 };
 
 function AutoCooldownBar({
@@ -258,11 +275,57 @@ export function HUD({ snapshot: s }: Props) {
             color="#ff60c0"
           />
         )}
+        {/* NEW: unique auto-abilities */}
+        {s.skills.includes('black_hole') && (
+          <AutoCooldownBar
+            label="Black Hole"
+            value={s.cooldowns.blackHole}
+            max={s.cooldowns.blackHoleMax}
+            color="#a040ff"
+          />
+        )}
+        {s.skills.includes('meteor_strike') && (
+          <AutoCooldownBar
+            label="Meteor"
+            value={s.cooldowns.meteor}
+            max={s.cooldowns.meteorMax}
+            color="#ff6020"
+          />
+        )}
+        {s.skills.includes('time_warp') && (
+          <AutoCooldownBar
+            label="Time Warp"
+            value={s.cooldowns.timeWarp}
+            max={s.cooldowns.timeWarpMax}
+            color="#80c0ff"
+          />
+        )}
+        {s.skills.includes('earthquake') && (
+          <AutoCooldownBar
+            label="Quake"
+            value={s.cooldowns.earthquake}
+            max={s.cooldowns.earthquakeMax}
+            color="#a08060"
+          />
+        )}
+        {s.skills.includes('bone_wall') && (
+          <AutoCooldownBar
+            label="Bone Wall"
+            value={s.cooldowns.boneWall}
+            max={s.cooldowns.boneWallMax}
+            color="#e0d0b0"
+          />
+        )}
         {!s.skills.includes('phantom_dash') &&
           !s.skills.includes('grave_call') &&
           !s.skills.includes('army_of_dead') &&
           !s.skills.includes('death_ray') &&
-          !s.skills.includes('lich_form') && (
+          !s.skills.includes('lich_form') &&
+          !s.skills.includes('black_hole') &&
+          !s.skills.includes('meteor_strike') &&
+          !s.skills.includes('time_warp') &&
+          !s.skills.includes('earthquake') &&
+          !s.skills.includes('bone_wall') && (
             <div className="text-[10px] text-zinc-600 italic">
               Unlock auto-abilities via upgrades
             </div>
@@ -317,7 +380,7 @@ export function HUD({ snapshot: s }: Props) {
 
       {/* ===== CONTROLS HINT ===== */}
       <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-zinc-600 font-mono">
-        WASD / Arrows — Move · Wand auto-fires · All abilities auto-cast
+        WASD / Arrows — Move · Wand auto-fires · All abilities auto-cast · ESC — Pause
       </div>
     </div>
   );

@@ -116,6 +116,7 @@ export function StartScreen({
           Controls
         </div>
         <div>WASD / Arrows — Move</div>
+        <div>ESC — Pause</div>
         <div className="mt-2 text-zinc-500 uppercase tracking-wider">
           Auto Systems
         </div>

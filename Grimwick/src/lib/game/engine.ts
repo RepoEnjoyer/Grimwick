@@ -13,6 +13,8 @@ import {
   wavesPerRoom,
 } from './content';
 import type {
+  BlackHole,
+  BoneWall,
   BossKind,
   BuildPath,
   CursedGroundCircle,
@@ -21,6 +23,8 @@ import type {
   FloatingText,
   GamePhase,
   HudSnapshot,
+  LightningArc,
+  Meteor,
   Minion,
   Particle,
   Player,
@@ -76,6 +80,11 @@ export class GameEngine {
   floatingTexts: FloatingText[] = [];
   relics: Relic[] = [];
   pendingSpawns: SpawnAnim[] = [];
+  // NEW entity arrays for unique powers
+  blackHoles: BlackHole[] = [];
+  boneWalls: BoneWall[] = [];
+  meteors: Meteor[] = [];
+  lightningArcs: LightningArc[] = [];
 
   // room state
   roomNumber = 0;
@@ -107,7 +116,11 @@ export class GameEngine {
   rottingFamiliarSpawned = false;
   boneShieldOrbs = 0;
   boneShieldRecharge = 0;
+  grantedBoneShieldOrbs = 0;
   cursedGroundSpawnTimer = 0;
+  // NEW minion spawn flags
+  boneGolemSpawned = false;
+  batsSpawned = 0;
 
   permanentBonuses: {
     healthBonus: number;
@@ -156,13 +169,20 @@ export class GameEngine {
     this.floatingTexts = [];
     this.relics = [];
     this.pendingSpawns = [];
+    this.blackHoles = [];
+    this.boneWalls = [];
+    this.meteors = [];
+    this.lightningArcs = [];
     this.roomNumber = 0;
     this.waveNumber = 0;
     this.boneServantSpawned = false;
     this.rottingFamiliarSpawned = false;
     this.boneBeastSpawned = false;
     this.wraithSpawned = false;
+    this.boneGolemSpawned = false;
+    this.batsSpawned = 0;
     this.boneShieldOrbs = this.player.boneShieldCount;
+    this.grantedBoneShieldOrbs = this.player.boneShieldCount;
     this.boneShieldRecharge = 0;
     this.cursedGroundSpawnTimer = 0;
     this.currentBoss = null;
@@ -186,9 +206,54 @@ export class GameEngine {
     this.cb.onPhaseChange(p);
   }
 
+  // Pause controls (called from React UI)
+  pause() {
+    if (this.phase === 'playing') this.setPhase('paused');
+  }
+  resume() {
+    if (this.phase === 'paused') this.setPhase('playing');
+  }
+  returnToMenu() {
+    this.setPhase('menu');
+  }
+
+  // Get build summary for pause menu
+  getBuildSummary() {
+    const p = this.player;
+    return {
+      hp: Math.max(0, Math.round(p.hp)),
+      maxHp: Math.round(p.maxHp),
+      souls: p.soulsCollected,
+      wandLevel: p.wandLevel,
+      wandType: p.wandType,
+      kills: p.kills,
+      minions: this.minions.length,
+      maxMinions: p.maxMinions,
+      room: this.roomNumber,
+      wave: `${this.waveNumber}/${this.totalWavesThisRoom}`,
+      skills: Array.from(p.skills),
+      relics: this.relics.map((r) => ({
+        id: r.id,
+        name: r.name,
+        icon: r.icon,
+        description: r.description,
+      })),
+    };
+  }
+
   // ---------------- input ----------------
   handleKeyDown(e: KeyboardEvent) {
     const k = e.key.toLowerCase();
+    // ESC toggles pause (works in playing or paused)
+    if (k === 'escape') {
+      e.preventDefault();
+      if (this.phase === 'playing') {
+        this.setPhase('paused');
+      } else if (this.phase === 'paused') {
+        this.setPhase('playing');
+      }
+      return;
+    }
     this.keys.add(k);
     // All abilities are now auto-triggered — no manual keys
     if (this.phase !== 'playing') return;
@@ -227,6 +292,10 @@ export class GameEngine {
     this.updateMinions(dt);
     this.updateSouls(dt);
     this.updateCursedGrounds(dt);
+    this.updateBlackHoles(dt);
+    this.updateBoneWalls(dt);
+    this.updateMeteors(dt);
+    this.updateLightningArcs(dt);
     this.updateParticles(dt);
     this.updateFloatingTexts(dt);
     this.updateSpawns(dt);
@@ -292,6 +361,15 @@ export class GameEngine {
       p.lastFireTime = this.gameTime;
     }
 
+    // bone shield: grant immediate orbs when count increases (upgrade picked)
+    if (p.boneShieldCount > this.grantedBoneShieldOrbs) {
+      const diff = p.boneShieldCount - this.grantedBoneShieldOrbs;
+      this.grantedBoneShieldOrbs = p.boneShieldCount;
+      this.boneShieldOrbs = Math.min(
+        p.boneShieldCount,
+        this.boneShieldOrbs + diff
+      );
+    }
     // bone shield recharge
     if (p.boneShieldCount > 0) {
       this.boneShieldRecharge += dt;
@@ -314,13 +392,17 @@ export class GameEngine {
       }
     }
 
-    // summon bone servant once
-    if (p.boneServantActive && !this.boneServantSpawned) {
-      this.boneServantSpawned = true;
+    // summon bone servant (respawn if dead)
+    if (
+      p.boneServantActive &&
+      !this.minions.some((m) => m.kind === 'servant')
+    ) {
       this.spawnMinion('servant', p.x, p.y, -1);
     }
-    if (p.rottingFamiliarActive && !this.rottingFamiliarSpawned) {
-      this.rottingFamiliarSpawned = true;
+    if (
+      p.rottingFamiliarActive &&
+      !this.minions.some((m) => m.kind === 'familiar')
+    ) {
       this.spawnMinion('familiar', p.x, p.y, -1);
     }
 
@@ -456,19 +538,103 @@ export class GameEngine {
       }
     }
 
-    // 8. Summon bone beast & wraith (once each, persistent)
-    if (p.boneBeastActive && !this.boneBeastSpawned) {
-      this.boneBeastSpawned = true;
+    // 8. Summon bone beast & wraith (respawn if dead)
+    if (
+      p.boneBeastActive &&
+      !this.minions.some((m) => m.kind === 'beast')
+    ) {
       this.spawnMinion('beast', p.x + 30, p.y, -1);
     }
-    if (p.wraithActive && !this.wraithSpawned) {
-      this.wraithSpawned = true;
+    if (
+      p.wraithActive &&
+      !this.minions.some((m) => m.kind === 'wraith')
+    ) {
       this.spawnMinion('wraith', p.x - 30, p.y, -1);
+    }
+    // NEW: Summon bone golem (respawn if dead)
+    if (
+      p.boneGolemActive &&
+      !this.minions.some((m) => m.kind === 'golem')
+    ) {
+      this.spawnMinion('golem', p.x, p.y + 30, -1);
+    }
+    // NEW: Summon plague bats (persistent, count tracked)
+    if (p.plagueBatsLevel > 0) {
+      const desiredBats = p.plagueBatsLevel * 3;
+      const currentBats = this.minions.filter((m) => m.kind === 'bat').length;
+      if (currentBats < desiredBats) {
+        // spawn missing bats
+        for (let i = currentBats; i < desiredBats; i++) {
+          const ang = Math.random() * Math.PI * 2;
+          this.spawnMinion(
+            'bat',
+            p.x + Math.cos(ang) * 50,
+            p.y + Math.sin(ang) * 50,
+            -1
+          );
+        }
+      }
     }
 
     // 9. Soul Meter — auto-triggers Soul Nova when full
     if (p.soulMeter >= p.soulMeterMax) {
       this.triggerSoulNova();
+    }
+
+    // ===== NEW UNIQUE POWERS (auto-triggered) =====
+
+    // Black Hole — every 15s, spawn singularity at player position
+    if (p.blackHoleLevel > 0) {
+      p.blackHoleTimer += dt;
+      if (p.blackHoleTimer >= 15) {
+        p.blackHoleTimer = 0;
+        this.spawnBlackHole();
+      }
+    }
+
+    // Meteor Strike — every 5s, drop meteor on random enemy
+    if (p.meteorLevel > 0) {
+      p.meteorTimer += dt;
+      if (p.meteorTimer >= 5) {
+        p.meteorTimer = 0;
+        this.spawnMeteor();
+      }
+    }
+
+    // Time Warp — every 18s, slow all enemies for 4s
+    if (p.timeWarpLevel > 0) {
+      p.timeWarpTimer += dt;
+      if (p.timeWarpActive > 0) {
+        p.timeWarpActive -= dt;
+      }
+      if (p.timeWarpTimer >= 18) {
+        p.timeWarpTimer = 0;
+        p.timeWarpActive = 4;
+        for (const e of this.enemies) {
+          e.slowTimer = 4;
+          e.slowMult = 0.4;
+        }
+        this.spawnFloatingText(p.x, p.y - 40, 'TIME WARP!', '#80c0ff');
+        this.spawnParticles(p.x, p.y, 30, '#80c0ff', 'frost', 1);
+      }
+    }
+
+    // Earthquake — every 12s, shockwave damages + knocks back all enemies
+    if (p.earthquakeLevel > 0) {
+      p.earthquakeTimer += dt;
+      if (p.earthquakeTimer >= 12) {
+        p.earthquakeTimer = 0;
+        this.triggerEarthquake();
+      }
+    }
+
+    // Bone Wall — every 8s, raise bone barriers around player
+    if (p.boneWallLevel > 0) {
+      p.boneWallTimer += dt;
+      if (p.boneWallTimer >= 8) {
+        p.boneWallTimer = 0;
+        this.spawnBoneWalls();
+      }
     }
   }
 
@@ -500,7 +666,7 @@ export class GameEngine {
   castDeathRay() {
     const p = this.player;
     p.deathRayTimer = 2;
-    p.deathRayCooldown = 30;
+    p.deathRayCooldown = 25;
     this.spawnFloatingText(p.x, p.y - 40, 'DEATH RAY!', '#ff4080');
   }
 
@@ -546,6 +712,112 @@ export class GameEngine {
     p.iframes = Math.max(p.iframes, 0.5);
   }
 
+  // ===== NEW UNIQUE POWER METHODS =====
+  spawnBlackHole() {
+    const p = this.player;
+    // Spawn at nearest enemy or random offset
+    const target = this.findNearestEnemy(p.x, p.y, 400);
+    let x = p.x + (Math.random() - 0.5) * 200;
+    let y = p.y + (Math.random() - 0.5) * 200;
+    if (target) {
+      x = target.x;
+      y = target.y;
+    }
+    const lvl = p.blackHoleLevel;
+    this.blackHoles.push({
+      x,
+      y,
+      radius: 20 + lvl * 5,
+      pullRadius: 140 + lvl * 30,
+      damage: p.damage * 0.4 * lvl,
+      life: 4 + lvl * 0.5,
+      maxLife: 4 + lvl * 0.5,
+      tickInterval: 0.3,
+      tickTimer: 0,
+    });
+    this.spawnFloatingText(x, y - 30, 'BLACK HOLE!', '#a040ff');
+    this.spawnParticles(x, y, 20, '#a040ff', 'magic', 0.8);
+  }
+
+  spawnMeteor() {
+    const p = this.player;
+    // pick a random enemy as target, fall back to player position
+    let targetX = p.x;
+    let targetY = p.y;
+    if (this.enemies.length > 0) {
+      const e = this.enemies[Math.floor(Math.random() * this.enemies.length)];
+      targetX = e.x;
+      targetY = e.y;
+    }
+    const lvl = p.meteorLevel;
+    this.meteors.push({
+      x: targetX,
+      y: targetY - 400,
+      targetX,
+      targetY,
+      startY: targetY - 400,
+      damage: p.damage * 3 * lvl,
+      radius: 18 + lvl * 4,
+      life: 0.8,
+      exploded: false,
+    });
+  }
+
+  triggerEarthquake() {
+    const p = this.player;
+    const lvl = p.earthquakeLevel;
+    const dmg = p.damage * 1.5 * lvl;
+    for (const e of this.enemies) {
+      this.damageEnemy(e, dmg, null);
+      // knockback
+      const ang = Math.atan2(e.y - p.y, e.x - p.x);
+      e.x += Math.cos(ang) * 60;
+      e.y += Math.sin(ang) * 60;
+      // also stun briefly
+      e.slowTimer = 1;
+      e.slowMult = 0.3;
+    }
+    // visual shockwave
+    for (let i = 0; i < 40; i++) {
+      const a = (i / 40) * Math.PI * 2;
+      this.particles.push({
+        x: p.x,
+        y: p.y,
+        vx: Math.cos(a) * 400,
+        vy: Math.sin(a) * 400,
+        life: 0.7,
+        maxLife: 0.7,
+        radius: 4,
+        color: '#a08060',
+        kind: 'spark',
+      });
+    }
+    this.spawnFloatingText(p.x, p.y - 40, 'EARTHQUAKE!', '#a08060');
+  }
+
+  spawnBoneWalls() {
+    const p = this.player;
+    const lvl = p.boneWallLevel;
+    const count = 3 + lvl;
+    for (let i = 0; i < count; i++) {
+      const ang = (i / count) * Math.PI * 2 + Math.random() * 0.3;
+      const dist = 80 + Math.random() * 40;
+      this.boneWalls.push({
+        x: p.x + Math.cos(ang) * dist,
+        y: p.y + Math.sin(ang) * dist,
+        hp: 50 + lvl * 30,
+        maxHp: 50 + lvl * 30,
+        radius: 20,
+        life: 10 + lvl * 2,
+        angle: ang,
+      });
+    }
+    this.spawnParticles(p.x, p.y, 15, '#e8e0d0', 'bone', 0.6);
+  }
+
+  // ===== NEW MINION AI: Golem and Bat =====
+  // (handled in updateMinions via kind check)
+
   fireWand() {
     const p = this.player;
     const target = this.findNearestEnemy(p.x, p.y, 9999);
@@ -562,6 +834,11 @@ export class GameEngine {
     let dmg = p.damage * dmgMult;
     if (p.lastLaughActive && p.hp / p.maxHp < 0.3) dmg *= 1.5;
     if (p.lichFormTimer > 0) dmg *= 1; // already applied
+    // NEW: crit chance
+    const isCrit = p.critChance > 0 && Math.random() < p.critChance;
+    if (isCrit) {
+      dmg *= p.critMult;
+    }
 
     // every 4th shot is a skull missile
     this.shotCounter++;
@@ -597,6 +874,7 @@ export class GameEngine {
             dotChance: p.dotChance,
             dotDamage: p.dotDamage,
             homing: false,
+            isCrit,
           });
         } else if (isHomingShot) {
           this.spawnProjectile({
@@ -615,6 +893,9 @@ export class GameEngine {
             dotChance: p.dotChance,
             dotDamage: p.dotDamage,
             homing: true,
+            isCrit,
+            frostLevel: p.frostBoltLevel,
+            chainLightningLevel: p.chainLightningLevel,
           });
         } else {
           this.spawnProjectile({
@@ -633,6 +914,10 @@ export class GameEngine {
             dotChance: p.dotChance,
             dotDamage: p.dotDamage,
             splitterLevel: p.splitterBoltLevel,
+            isCrit,
+            frostLevel: p.frostBoltLevel,
+            chainLightningLevel: p.chainLightningLevel,
+            ricochetLeft: p.ricochetLevel,
           });
         }
       }
@@ -712,6 +997,7 @@ export class GameEngine {
       chainLeft: 0,
       hitSet: new Set<number>(),
       fromPlayer: true,
+      ricochetLeft: 0,
       ...p,
     } as Projectile);
   }
@@ -761,6 +1047,34 @@ export class GameEngine {
       pr.x += pr.vx * dt;
       pr.y += pr.vy * dt;
       pr.life -= dt;
+      // Ricochet: bounce off walls instead of being removed
+      if (pr.ricochetLeft && pr.ricochetLeft > 0) {
+        let bounced = false;
+        if (pr.x < pr.radius) {
+          pr.x = pr.radius;
+          pr.vx = Math.abs(pr.vx);
+          bounced = true;
+        } else if (pr.x > GAME_W - pr.radius) {
+          pr.x = GAME_W - pr.radius;
+          pr.vx = -Math.abs(pr.vx);
+          bounced = true;
+        }
+        if (pr.y < pr.radius) {
+          pr.y = pr.radius;
+          pr.vy = Math.abs(pr.vy);
+          bounced = true;
+        } else if (pr.y > GAME_H - pr.radius) {
+          pr.y = GAME_H - pr.radius;
+          pr.vy = -Math.abs(pr.vy);
+          bounced = true;
+        }
+        if (bounced) {
+          pr.ricochetLeft--;
+          // clear hit set so bounced projectile can hit same enemies again
+          pr.hitSet.clear();
+          this.spawnParticles(pr.x, pr.y, 4, pr.color, 'spark', 0.2);
+        }
+      }
       if (
         pr.life <= 0 ||
         pr.x < -40 ||
@@ -779,6 +1093,57 @@ export class GameEngine {
         if (d < e.radius + pr.radius) {
           this.damageEnemy(e, pr.damage, pr);
           pr.hitSet.add(e.id);
+          // NEW: frost bolt — slow enemy on hit
+          if (pr.frostLevel && pr.frostLevel > 0) {
+            e.slowTimer = 2;
+            e.slowMult = Math.min(e.slowMult, 0.5);
+            if (Math.random() < 0.3) {
+              this.spawnParticles(e.x, e.y, 1, '#a0d8ff', 'frost', 0.3);
+            }
+          }
+          // NEW: chain lightning — arc to nearby enemies
+          if (pr.chainLightningLevel && pr.chainLightningLevel > 0) {
+            const arcCount = 1 + pr.chainLightningLevel;
+            const arcHit = new Set<number>(pr.hitSet);
+            let lastX = e.x;
+            let lastY = e.y;
+            for (let arc = 0; arc < arcCount; arc++) {
+              const next = this.findNearestEnemy(lastX, lastY, 180, arcHit);
+              if (!next) break;
+              arcHit.add(next.id);
+              // visual lightning arc
+              this.lightningArcs.push({
+                x1: lastX,
+                y1: lastY,
+                x2: next.x,
+                y2: next.y,
+                life: 0.2,
+                maxLife: 0.2,
+                color: '#a0e0ff',
+              });
+              this.damageEnemy(next, pr.damage * 0.6, null);
+              lastX = next.x;
+              lastY = next.y;
+            }
+          }
+          // NEW: crit visual
+          if (pr.isCrit) {
+            this.spawnFloatingText(e.x, e.y - 20, 'CRIT!', '#ffd040');
+            this.spawnParticles(e.x, e.y, 8, '#ffd040', 'spark', 0.4);
+          }
+          // NEW: execute — instant-kill low HP enemies
+          if (
+            this.player.executeThreshold > 0 &&
+            !e.isBoss &&
+            e.hp > 0 &&
+            e.hp / e.maxHp <= this.player.executeThreshold
+          ) {
+            this.spawnFloatingText(e.x, e.y - 30, 'EXECUTE!', '#ff4060');
+            this.spawnParticles(e.x, e.y, 12, '#ff4060', 'spark', 0.5);
+            e.hp = 0;
+            const idx = this.enemies.indexOf(e);
+            if (idx >= 0) this.killEnemy(e, idx);
+          }
           // chain
           if (pr.chainLeft > 0) {
             pr.chainLeft--;
@@ -883,6 +1248,17 @@ export class GameEngine {
           continue;
         }
       }
+      // NEW: slow effect countdown
+      if (e.slowTimer > 0) {
+        e.slowTimer -= dt;
+        if (e.slowTimer <= 0) {
+          e.slowMult = 1;
+        }
+      }
+      // NEW: marked timer countdown
+      if (e.markedTimer > 0) {
+        e.markedTimer -= dt;
+      }
 
       // phase for ghost
       if (e.kind === 'ghost') {
@@ -893,7 +1269,7 @@ export class GameEngine {
         }
       }
 
-      // AI per kind
+      // AI per kind (note: slowMult is applied inside updateEnemyAI via e.speed * slowMult)
       this.updateEnemyAI(e, dt);
 
       // contact damage to player
@@ -1112,8 +1488,10 @@ export class GameEngine {
       this.updateBossAI(e, dt);
     }
 
-    e.x += e.vx * dt;
-    e.y += e.vy * dt;
+    // NEW: apply slow effect to movement
+    const slowM = e.slowTimer > 0 ? e.slowMult : 1;
+    e.x += e.vx * dt * slowM;
+    e.y += e.vy * dt * slowM;
     e.x = Math.max(e.radius, Math.min(GAME_W - e.radius, e.x));
     e.y = Math.max(e.radius, Math.min(GAME_H - e.radius, e.y));
   }
@@ -1267,7 +1645,7 @@ export class GameEngine {
   updateMinions(dt: number) {
     // cap minions — beast, wraith, servant, familiar don't count
     const p = this.player;
-    const uncapped = new Set(['familiar', 'servant', 'beast', 'wraith']);
+    const uncapped = new Set(['familiar', 'servant', 'beast', 'wraith', 'golem', 'bat']);
     const cappedMinions = this.minions.filter((m) => !uncapped.has(m.kind));
     if (cappedMinions.length > p.maxMinions) {
       // remove oldest capped minion
@@ -1420,6 +1798,99 @@ export class GameEngine {
         continue;
       }
 
+      // NEW: Golem — slow heavy tank, big AoE slam attack
+      if (m.kind === 'golem') {
+        const target = this.findNearestEnemy(m.x, m.y, 400);
+        m.phaseTimer = (m.phaseTimer ?? 0) - dt;
+        if (target) {
+          const a = Math.atan2(target.y - m.y, target.x - m.x);
+          m.vx = Math.cos(a) * m.speed;
+          m.vy = Math.sin(a) * m.speed;
+          // periodic slam: damage all nearby enemies
+          if ((m.phaseTimer ?? 0) <= 0) {
+            m.phaseTimer = 2.5;
+            this.spawnParticles(m.x, m.y, 16, '#a08060', 'spark', 0.5);
+            for (const e of this.enemies) {
+              const d = Math.hypot(e.x - m.x, e.y - m.y);
+              if (d < 80 + e.radius) {
+                this.damageEnemy(e, m.damage * 1.5, null);
+                if (p.vampiricAuraLevel > 0) {
+                  p.hp = Math.min(
+                    p.maxHp,
+                    p.hp + m.damage * 0.15 * p.vampiricAuraLevel
+                  );
+                }
+                // knockback
+                const ang = Math.atan2(e.y - m.y, e.x - m.x);
+                e.x += Math.cos(ang) * 25;
+                e.y += Math.sin(ang) * 25;
+              }
+            }
+          }
+          // also damage on contact
+          for (const e of this.enemies) {
+            const d = Math.hypot(e.x - m.x, e.y - m.y);
+            if (d < e.radius + m.radius && m.attackCooldown <= 0) {
+              this.damageEnemy(e, m.damage, null);
+              m.attackCooldown = m.attackInterval;
+            }
+          }
+        } else {
+          // follow player slowly
+          const a = Math.atan2(p.y - m.y, p.x - m.x);
+          const d = Math.hypot(p.x - m.x, p.y - m.y);
+          if (d > 120) {
+            m.vx = Math.cos(a) * m.speed;
+            m.vy = Math.sin(a) * m.speed;
+          } else {
+            m.vx *= 0.85;
+            m.vy *= 0.85;
+          }
+        }
+        m.x += m.vx * dt;
+        m.y += m.vy * dt;
+        m.x = Math.max(10, Math.min(GAME_W - 10, m.x));
+        m.y = Math.max(10, Math.min(GAME_H - 10, m.y));
+        continue;
+      }
+
+      // NEW: Bat — fast flying, swarms and bites enemies
+      if (m.kind === 'bat') {
+        const target = this.findNearestEnemy(m.x, m.y, 500);
+        if (target) {
+          const a = Math.atan2(target.y - m.y, target.x - m.x);
+          // zigzag flight
+          const zigzag = Math.sin(this.gameTime * 8 + m.id) * 0.5;
+          m.vx = Math.cos(a + zigzag) * m.speed;
+          m.vy = Math.sin(a + zigzag) * m.speed;
+          for (const e of this.enemies) {
+            const d = Math.hypot(e.x - m.x, e.y - m.y);
+            if (d < e.radius + m.radius && m.attackCooldown <= 0) {
+              this.damageEnemy(e, m.damage, null);
+              if (p.vampiricAuraLevel > 0) {
+                p.hp = Math.min(
+                  p.maxHp,
+                  p.hp + m.damage * 0.1 * p.vampiricAuraLevel
+                );
+              }
+              m.attackCooldown = m.attackInterval;
+            }
+          }
+        } else {
+          // orbit player
+          const orbitAng = this.gameTime * 2 + m.id;
+          const tx = p.x + Math.cos(orbitAng) * 60;
+          const ty = p.y + Math.sin(orbitAng) * 60;
+          m.vx = (tx - m.x) * 5;
+          m.vy = (ty - m.y) * 5;
+        }
+        m.x += m.vx * dt;
+        m.y += m.vy * dt;
+        m.x = Math.max(10, Math.min(GAME_W - 10, m.x));
+        m.y = Math.max(10, Math.min(GAME_H - 10, m.y));
+        continue;
+      }
+
       // ground minions: chase nearest enemy
       const target = this.findNearestEnemy(m.x, m.y, 500);
       if (target) {
@@ -1501,6 +1972,18 @@ export class GameEngine {
       hp = 60;
       speed = 260;
       radius = 12;
+    } else if (kind === 'golem') {
+      // Huge tanky golem — slow but massive damage
+      dmg = p.minionDamage * 4;
+      hp = 400;
+      speed = 90;
+      radius = 24;
+    } else if (kind === 'bat') {
+      // Fast flying bat — weak but numerous
+      dmg = p.minionDamage * 0.7;
+      hp = 20;
+      speed = 280;
+      radius = 8;
     }
     this.minions.push({
       id: this.nextMinionId++,
@@ -1508,7 +1991,7 @@ export class GameEngine {
       y,
       vx: 0,
       vy: 0,
-      hp,
+      hp: Math.round(hp * p.minionHpMult),
       damage: dmg,
       speed,
       radius,
@@ -1583,6 +2066,143 @@ export class GameEngine {
           this.damageEnemy(e, cg.damage, null);
           cg.hitSet.add(e.id);
         }
+      }
+    }
+  }
+
+  // ===== NEW: update methods for unique power entities =====
+  updateBlackHoles(dt: number) {
+    for (let i = this.blackHoles.length - 1; i >= 0; i--) {
+      const bh = this.blackHoles[i];
+      bh.life -= dt;
+      bh.tickTimer -= dt;
+      if (bh.life <= 0) {
+        this.blackHoles.splice(i, 1);
+        continue;
+      }
+      // pull enemies toward center
+      for (const e of this.enemies) {
+        const d = Math.hypot(e.x - bh.x, e.y - bh.y);
+        if (d < bh.pullRadius && d > 5) {
+          const ang = Math.atan2(bh.y - e.y, bh.x - e.x);
+          const pullStrength = 200 * (1 - d / bh.pullRadius);
+          e.x += Math.cos(ang) * pullStrength * dt;
+          e.y += Math.sin(ang) * pullStrength * dt;
+        }
+      }
+      // damage tick
+      if (bh.tickTimer <= 0) {
+        bh.tickTimer = bh.tickInterval;
+        for (const e of this.enemies) {
+          const d = Math.hypot(e.x - bh.x, e.y - bh.y);
+          if (d < bh.radius + e.radius) {
+            this.damageEnemy(e, bh.damage, null);
+          }
+        }
+        // swirl particles
+        for (let k = 0; k < 4; k++) {
+          const a = Math.random() * Math.PI * 2;
+          const r = bh.radius + Math.random() * 20;
+          this.particles.push({
+            x: bh.x + Math.cos(a) * r,
+            y: bh.y + Math.sin(a) * r,
+            vx: Math.cos(a + Math.PI / 2) * 80,
+            vy: Math.sin(a + Math.PI / 2) * 80,
+            life: 0.5,
+            maxLife: 0.5,
+            radius: 2,
+            color: '#a040ff',
+            kind: 'magic',
+          });
+        }
+      }
+    }
+  }
+
+  updateBoneWalls(dt: number) {
+    for (let i = this.boneWalls.length - 1; i >= 0; i--) {
+      const bw = this.boneWalls[i];
+      bw.life -= dt;
+      if (bw.life <= 0 || bw.hp <= 0) {
+        this.spawnParticles(bw.x, bw.y, 8, '#e8e0d0', 'bone', 0.5);
+        this.boneWalls.splice(i, 1);
+        continue;
+      }
+      // push enemies away (block them)
+      for (const e of this.enemies) {
+        const d = Math.hypot(e.x - bw.x, e.y - bw.y);
+        if (d < bw.radius + e.radius) {
+          const ang = Math.atan2(e.y - bw.y, e.x - bw.x);
+          e.x = bw.x + Math.cos(ang) * (bw.radius + e.radius);
+          e.y = bw.y + Math.sin(ang) * (bw.radius + e.radius);
+          // wall takes damage from contact
+          bw.hp -= e.damage * dt * 0.5;
+        }
+      }
+      // bone walls also absorb enemy projectiles
+      for (let j = this.enemyProjectiles.length - 1; j >= 0; j--) {
+        const pr = this.enemyProjectiles[j];
+        const d = Math.hypot(pr.x - bw.x, pr.y - bw.y);
+        if (d < bw.radius + pr.radius) {
+          this.spawnParticles(pr.x, pr.y, 4, '#e8e0d0', 'spark', 0.3);
+          this.enemyProjectiles.splice(j, 1);
+          bw.hp -= 5;
+        }
+      }
+    }
+  }
+
+  updateMeteors(dt: number) {
+    for (let i = this.meteors.length - 1; i >= 0; i--) {
+      const m = this.meteors[i];
+      if (!m.exploded) {
+        m.life -= dt;
+        // interpolate position from startY to targetY
+        const t = 1 - Math.max(0, m.life / 0.8);
+        m.x = m.targetX;
+        m.y = m.startY + (m.targetY - m.startY) * t;
+        // trail particles
+        if (Math.random() < 0.6) {
+          this.particles.push({
+            x: m.x + (Math.random() - 0.5) * 8,
+            y: m.y - 5,
+            vx: (Math.random() - 0.5) * 40,
+            vy: -60 - Math.random() * 40,
+            life: 0.6,
+            maxLife: 0.6,
+            radius: 3,
+            color: '#ff6020',
+            kind: 'meteor_trail',
+          });
+        }
+        if (m.life <= 0) {
+          m.exploded = true;
+          // explode — damage all enemies in radius
+          this.spawnParticles(m.targetX, m.targetY, 30, '#ff6020', 'spark', 0.6);
+          this.spawnParticles(m.targetX, m.targetY, 12, '#ffd040', 'spark', 0.4);
+          for (const e of this.enemies) {
+            const d = Math.hypot(e.x - m.targetX, e.y - m.targetY);
+            if (d < m.radius * 2.5) {
+              this.damageEnemy(e, m.damage, null);
+              // knockback
+              const ang = Math.atan2(e.y - m.targetY, e.x - m.targetX);
+              e.x += Math.cos(ang) * 40;
+              e.y += Math.sin(ang) * 40;
+            }
+          }
+          this.spawnFloatingText(m.targetX, m.targetY - 30, 'METEOR!', '#ff6020');
+          this.meteors.splice(i, 1);
+        }
+      }
+    }
+  }
+
+  updateLightningArcs(dt: number) {
+    for (let i = this.lightningArcs.length - 1; i >= 0; i--) {
+      const la = this.lightningArcs[i];
+      la.life -= dt;
+      if (la.life <= 0) {
+        this.lightningArcs.splice(i, 1);
       }
     }
   }
@@ -1709,6 +2329,9 @@ export class GameEngine {
       phaseActive: true,
       shielded: false,
       shieldHp: kind === 'paladin' ? 30 : 0,
+      slowTimer: 0,
+      slowMult: 1,
+      markedTimer: 0,
       color: tpl.color,
       soulValue: tpl.soulValue,
     });
@@ -1738,6 +2361,9 @@ export class GameEngine {
       phaseActive: true,
       shielded: false,
       shieldHp: 0,
+      slowTimer: 0,
+      slowMult: 1,
+      markedTimer: 0,
       isBoss: true,
       bossKind: kind,
       bossPhase: 1,
@@ -1782,8 +2408,24 @@ export class GameEngine {
       }
     }
 
-    e.hp -= dmg;
+    // NEW: mark of death bonus damage
+    let finalDmg = dmg;
+    if (e.markedTimer > 0) {
+      finalDmg *= 1.5;
+    }
+
+    e.hp -= finalDmg;
     e.hitFlash = 0.1;
+
+    // NEW: mark of death — chance to mark enemy on hit
+    if (
+      this.player.markOfDeathLevel > 0 &&
+      e.markedTimer <= 0 &&
+      Math.random() < 0.2 * this.player.markOfDeathLevel
+    ) {
+      e.markedTimer = 4;
+      this.spawnParticles(e.x, e.y, 6, '#ff4060', 'magic', 0.4);
+    }
 
     // dot from soul burn
     if (pr && pr.dotChance && pr.dotChance > 0 && Math.random() < pr.dotChance) {
@@ -1853,6 +2495,34 @@ export class GameEngine {
       this.spawnMinion('skeleton', e.x, e.y, this.player.minionDuration);
     }
 
+    // NEW: necrotic explosion — corpse explodes damaging nearby enemies
+    if (this.player.necroticExplosionLevel > 0 && !e.isBoss) {
+      const explDmg =
+        this.player.damage * 0.8 * this.player.necroticExplosionLevel;
+      const radius = 70 + this.player.necroticExplosionLevel * 15;
+      this.spawnParticles(e.x, e.y, 14, '#80ff40', 'spark', 0.4);
+      for (const other of this.enemies) {
+        const d = Math.hypot(other.x - e.x, other.y - e.y);
+        if (d < radius) {
+          this.damageEnemy(other, explDmg, null);
+        }
+      }
+    }
+
+    // NEW: vampiric touch — heal when enemies die near player
+    if (this.player.vampiricTouchLevel > 0) {
+      const d = Math.hypot(this.player.x - e.x, this.player.y - e.y);
+      if (d < 200) {
+        this.player.hp = Math.min(
+          this.player.maxHp,
+          this.player.hp + this.player.vampiricTouchLevel
+        );
+        if (Math.random() < 0.3) {
+          this.spawnFloatingText(this.player.x, this.player.y - 28, `+${this.player.vampiricTouchLevel}`, '#ff6080');
+        }
+      }
+    }
+
     // boss death
     if (e.isBoss) {
       this.spawnParticles(e.x, e.y, 60, '#ffd060', 'spark', 1.5);
@@ -1903,6 +2573,35 @@ export class GameEngine {
     if (p.graveArmorActive) {
       const armor = Math.min(8, this.minions.filter((m) => !m.isFamiliar).length);
       dmg = Math.max(1, dmg - armor);
+    }
+    // NEW: iron bones — flat damage reduction
+    if (p.ironBonesLevel > 0) {
+      dmg = Math.max(1, dmg - p.ironBonesLevel * 3);
+    }
+    // NEW: soul link — redirect % of damage to minions
+    if (p.soulLinkLevel > 0 && this.minions.length > 0) {
+      const redirect = dmg * 0.2 * p.soulLinkLevel;
+      dmg -= redirect;
+      // distribute redirect damage to minions (kill one if needed)
+      let remaining = redirect;
+      for (const m of this.minions) {
+        if (remaining <= 0) break;
+        const take = Math.min(remaining, m.hp);
+        m.hp -= take;
+        remaining -= take;
+        if (m.hp <= 0) {
+          const idx = this.minions.indexOf(m);
+          if (idx >= 0) {
+            // Volatile Bones: explode on death
+            if (p.volatileBonesLevel > 0) {
+              this.volatileExplosion(m.x, m.y, m.damage * 2 * p.volatileBonesLevel);
+            }
+            this.spawnParticles(m.x, m.y, 6, '#c8c0a8', 'bone', 0.4);
+            this.minions.splice(idx, 1);
+            break;
+          }
+        }
+      }
     }
     // bone shield
     if (this.boneShieldOrbs > 0) {
@@ -2253,13 +2952,23 @@ export class GameEngine {
         army: p.armyOfDeadCooldown,
         armyMax: 40,
         deathRay: p.deathRayCooldown,
-        deathRayMax: 30,
+        deathRayMax: 25,
         lich: p.lichFormCooldown,
         lichMax: 45,
         boneShield: p.boneShieldInterval - this.boneShieldRecharge,
         boneShieldMax: p.boneShieldInterval,
         graveCall: 12 - p.graveCallAutoTimer,
         graveCallMax: 12,
+        blackHole: 15 - p.blackHoleTimer,
+        blackHoleMax: 15,
+        meteor: 5 - p.meteorTimer,
+        meteorMax: 5,
+        timeWarp: 18 - p.timeWarpTimer,
+        timeWarpMax: 18,
+        earthquake: 12 - p.earthquakeTimer,
+        earthquakeMax: 12,
+        boneWall: 8 - p.boneWallTimer,
+        boneWallMax: 8,
       },
       ultimatesActive: {
         army: p.armyOfDeadTimer,
