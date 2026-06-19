@@ -450,3 +450,94 @@ Stage Summary:
 - COMBO SYSTEM: Chain kills for combo bonuses at 10/25/50/100/200 milestones (bonus heal soul, visual feedback, Bloodlust enrage if unlocked)
 - 2 NEW BOSSES: Wraith Queen (room 6, fast circling + teleport + ghost summons), Bone Colossus (room 14, slow tank + stomp + bonebeast summons + enrage)
 - All systems verified end-to-end via Agent Browser, no errors
+
+---
+Task ID: 6
+Agent: main (super-z)
+Task: Fix rarity issue (OP skills should be epic not rare), remove combo bar UI from top of game, add QOL features. Combo skills stay (just remove the combo bar visual).
+
+Work Log:
+- Fixed rarity issue: reverted 7 OP skills from rare back to EPIC with fixed-power one-time-only pickup:
+  * Execute: epic, instantly kills non-boss enemies below 25% HP (was stackable rare)
+  * Plague Bats: epic, summons 5 persistent bats (was 3 stackable)
+  * Black Hole: epic, massive singularity every 15s (was stackable)
+  * Meteor Strike: epic, devastating meteor on strongest enemy every 5s (was random)
+  * Time Warp: epic, slows ALL enemies to 30% for 5s (was 4s)
+  * Earthquake: epic, massive shockwave every 12s (was stackable)
+  * I AM BLESSED BY GOD: epic, 12% chest drop rate (was stackable 4% per level)
+- Removed combo bar UI from HUD.tsx (combo system stays internal — Bloodlust combo skill still triggers on milestones, but no always-visible bar)
+- Removed "Combo ended" floating text from engine (was noise)
+- Updated types.ts with new QOL fields on HudSnapshot: timeSurvived, damageTaken, damageDealt, buildPaths (necromancy/wand/survival/generic counts), targetId/targetX/targetY, bossSpecialTelegraph
+- Updated engine.ts:
+  * Added damageTaken, damageDealt, currentTargetId tracking fields (reset in startRun)
+  * Added gameTime reset to 0 in startRun
+  * Tracked damageDealt in damageEnemy (every hit adds to counter)
+  * Tracked damageTaken in damagePlayer (every hit adds to counter)
+  * Added findSmartTarget method: targets boss first, then elite (if within 1.6x nearest distance), then nearest enemy
+  * Updated fireWand to use findSmartTarget instead of findNearestEnemy, sets currentTargetId
+  * Added computeBossTelegraph method: returns warning 1.5s before boss special fires, with named attack (SHOCKWAVE / SUMMON ADDS / PURGE / BONE SPIRAL / TELEPORT + SUMMON / SUMMON + HEAL)
+  * Updated emitHud to include all new QOL fields
+  * Updated getBuildSummary to include timeSurvived, damageTaken, damageDealt, elitesKilled, maxCombo
+  * Updated onDeath callback signature to include all new stats
+- Updated GameCanvas.tsx:
+  * Added deathResult state type to include all new fields
+  * Added useEffect for global R hotkey handler — context-sensitive:
+    - On death screen: R = quick restart
+    - On pause menu: R = resume + restart
+    - On upgrade/chest screen: R = reroll
+- Updated HUD.tsx:
+  * Removed combo counter UI (top center bar with combo number, timer bar)
+  * Added low HP red pulse vignette (radial red gradient, animate-pulse, 0.8s)
+  * Added time survived display (MM:SS) next to room info
+  * Added damage taken counter next to kills/elites
+  * Added build path progress bars (Necro/Wand/Surv/Gen) showing relative build distribution
+  * Added boss special telegraph warning (top center, big red text with countdown)
+  * Updated controls hint: "Wand auto-fires (smart target)"
+  * Added BuildBar helper component
+- Updated DeathScreen.tsx (complete rewrite):
+  * Two-panel layout: Combat stats + Build stats
+  * Combat: Time Survived, Kills, Elites Slain, Max Combo, Damage Dealt, Damage Taken
+  * Build: Rooms Cleared, Bosses Slain, Skills Unlocked, DPS, Dmg Ratio, Souls → Shards
+  * Added [R] hint on RISE AGAIN button
+- Updated PauseMenu.tsx:
+  * Added extended combat stats grid (Time, Elites, Max Combo, DMG Dealt, DMG Taken)
+  * Added [R] hint on RESTART RUN button
+  * Updated BuildSummary interface with new fields
+- Updated GameCanvas.tsx getBuildSummary fallback to include all new fields
+- Updated UpgradeScreen.tsx:
+  * Added [R] hint on REROLL button
+- Updated StartScreen.tsx:
+  * Added "R — Quick Restart / Reroll (context-sensitive)" control hint
+  * Updated wand auto-fire description: "smart target: boss > elite > nearest"
+  * Added "Boss specials telegraph 1.5s before firing" hint
+  * Removed "Chain kills for COMBO bonuses" hint (since combo bar is gone)
+- Updated render.ts:
+  * Added target indicator visual: 4 pulsing gold corner brackets around current wand target (with glow)
+  * Indicator only shows during 'playing' phase
+- Verified via Agent Browser:
+  * Epic uniqueness: 100 attempts to find Execute/Black Hole after pickup → 0 found
+  * Smart targeting: regular at 100px, elite at 110px → elite targeted (within 1.6x threshold = 160px)
+  * Smart targeting: regular at 80px, elite at 160px → regular targeted (elite beyond threshold)
+  * Boss telegraph: Wraith Queen with special timer at 1s → telegraph "TELEPORT + SUMMON" with 1.0s countdown
+  * QOL tracking: timeSurvived=9s, damageTaken=30, damageDealt=253, currentTargetId=7 (active)
+  * R hotkey from death: phase "dead" → "playing" with fresh run (gameTime reset, full HP)
+  * Death screen shows [R] hint on RISE AGAIN button
+  * No console errors, TypeScript clean, ESLint clean
+
+Stage Summary:
+- RARITY FIX: All 7 OP skills (Execute, Plague Bats, Black Hole, Meteor Strike, Time Warp, Earthquake, Blessed By God) are now EPIC one-time-only with strong fixed power, instead of stackable rare. Verified via 100-attempt test.
+- COMBO BAR REMOVED: The always-visible combo counter at top center is gone. Combo system stays internal (Bloodlust combo skill still functions on milestones).
+- 11 QOL FEATURES ADDED:
+  1. R hotkey quick-restart from death screen
+  2. R hotkey quick-restart from pause menu
+  3. R hotkey reroll in upgrade/chest screen
+  4. Smart wand targeting (boss > elite > nearest, with 1.6x distance threshold)
+  5. Target indicator (gold crosshair brackets on current target)
+  6. Time survived counter (MM:SS) in HUD
+  7. Damage taken counter in HUD
+  8. Build path progress bars (Necro/Wand/Surv/Gen distribution)
+  9. Boss special attack telegraph (named warning 1.5s before firing)
+  10. Low HP red pulse vignette (more pronounced at <30% HP)
+  11. Enhanced death screen with 12 stats (Combat panel + Build panel, including DPS and damage ratio)
+- Pause menu also shows extended combat stats
+- All systems verified end-to-end via Agent Browser, no errors

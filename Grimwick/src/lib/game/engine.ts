@@ -50,6 +50,13 @@ export interface EngineCallbacks {
     roomsCleared: number;
     bossesDefeated: number;
     reachedVictory: boolean;
+    timeSurvived: number;
+    damageTaken: number;
+    damageDealt: number;
+    kills: number;
+    elitesKilled: number;
+    maxCombo: number;
+    skillsCount: number;
   }) => void;
   onVictory?: () => void;
 }
@@ -133,6 +140,10 @@ export class GameEngine {
   eliteSpawnCounter = 0; // increments per spawn; elites every N spawns
   soulConduitCounter = 0; // counts soul pickups for Soul Conduit combo
   bloodlustTimer = 0; // Bloodlust combo: enraged minions timer
+  // ===== QOL TRACKING =====
+  damageTaken = 0; // total damage taken this run
+  damageDealt = 0; // total damage dealt this run
+  currentTargetId: number | null = null; // current wand target enemy id
 
   permanentBonuses: {
     healthBonus: number;
@@ -240,6 +251,10 @@ export class GameEngine {
     this.eliteSpawnCounter = 0;
     this.soulConduitCounter = 0;
     this.bloodlustTimer = 0;
+    this.damageTaken = 0;
+    this.damageDealt = 0;
+    this.currentTargetId = null;
+    this.gameTime = 0;
     this.setPhase('playing');
     this.startNextRoom();
     this.emitHud();
@@ -291,6 +306,12 @@ export class GameEngine {
         icon: r.icon,
         description: r.description,
       })),
+      // QOL: extra stats for pause menu
+      timeSurvived: this.gameTime,
+      damageTaken: Math.round(this.damageTaken),
+      damageDealt: Math.round(this.damageDealt),
+      elitesKilled: this.elitesKilled,
+      maxCombo: p.comboMax,
     };
   }
 
@@ -391,14 +412,10 @@ export class GameEngine {
     if (p.dashTimer > 0) p.dashTimer -= dt;
     if (p.dashCooldownTimer > 0) p.dashCooldownTimer -= dt;
 
-    // combo timer countdown
+    // combo timer countdown (internal — no UI bar)
     if (p.comboTimer > 0) {
       p.comboTimer -= dt;
       if (p.comboTimer <= 0) {
-        // combo expired — show summary if meaningful
-        if (p.comboCount >= 5) {
-          this.spawnFloatingText(p.x, p.y - 40, `Combo ended: ${p.comboCount}x`, '#a0a0a0');
-        }
         p.comboCount = 0;
         p.comboTimer = 0;
       }
@@ -949,11 +966,15 @@ export class GameEngine {
 
   fireWand() {
     const p = this.player;
-    const target = this.findNearestEnemy(p.x, p.y, 9999);
+    // QOL: Smart targeting — prefer boss, then elite, then nearest
+    const target = this.findSmartTarget(p.x, p.y);
     let angle = p.facing;
     if (target) {
       angle = Math.atan2(target.y - p.y, target.x - p.x);
       p.facing = angle;
+      this.currentTargetId = target.id;
+    } else {
+      this.currentTargetId = null;
     }
 
     const burstCount = 1 + p.cursedBarrageLevel * 2;
@@ -2837,6 +2858,8 @@ export class GameEngine {
 
     e.hp -= finalDmg;
     e.hitFlash = 0.1;
+    // QOL: track damage dealt
+    this.damageDealt += finalDmg;
 
     // ===== ELITE: vampiric — heals on hit (when dealing damage to player) handled in damagePlayer;
     // but we also reward the player with bonus damage feedback if crit =====
@@ -3298,6 +3321,8 @@ export class GameEngine {
       return;
     }
     p.hp -= dmg;
+    // QOL: track damage taken
+    this.damageTaken += dmg;
     // Apply iframe bonus from permanent upgrades
     p.iframes = 0.5 + (this.permanentBonuses.iframeBonus ?? 0) * 0.1;
     this.spawnParticles(p.x, p.y, 8, '#ff6060', 'spark', 0.4);
@@ -3370,6 +3395,13 @@ export class GameEngine {
       roomsCleared: this.roomNumber - 1,
       bossesDefeated: this.enemies.filter(() => false).length,
       reachedVictory: false,
+      timeSurvived: this.gameTime,
+      damageTaken: Math.round(this.damageTaken),
+      damageDealt: Math.round(this.damageDealt),
+      kills: this.player.kills,
+      elitesKilled: this.elitesKilled,
+      maxCombo: this.player.comboMax,
+      skillsCount: this.player.skills.size,
     });
   }
 
@@ -3385,6 +3417,13 @@ export class GameEngine {
         roomsCleared: this.roomNumber,
         bossesDefeated: 4,
         reachedVictory: true,
+        timeSurvived: this.gameTime,
+        damageTaken: Math.round(this.damageTaken),
+        damageDealt: Math.round(this.damageDealt),
+        kills: this.player.kills,
+        elitesKilled: this.elitesKilled,
+        maxCombo: this.player.comboMax,
+        skillsCount: this.player.skills.size,
       });
     }
   }
@@ -3730,6 +3769,59 @@ export class GameEngine {
     return best;
   }
 
+  // QOL: Smart targeting priority: boss > elite > nearest
+  // Bosses always take priority regardless of distance (within reason).
+  // Elites are preferred if within 1.6x the distance of the nearest non-elite.
+  findSmartTarget(x: number, y: number): Enemy | null {
+    if (this.enemies.length === 0) return null;
+    let boss: Enemy | null = null;
+    let elite: Enemy | null = null;
+    let nearest: Enemy | null = null;
+    let nearestD = Infinity;
+    let eliteD = Infinity;
+    for (const e of this.enemies) {
+      if (e.kind === 'ghost' && !e.phaseActive) continue;
+      const d = Math.hypot(e.x - x, e.y - y);
+      if (e.isBoss) {
+        // boss always wins (prefer the closest boss if multiple)
+        if (!boss || d < Math.hypot(boss.x - x, boss.y - y)) boss = e;
+      }
+      if (e.isElite && d < eliteD) {
+        eliteD = d;
+        elite = e;
+      }
+      if (d < nearestD) {
+        nearestD = d;
+        nearest = e;
+      }
+    }
+    if (boss) return boss;
+    // Elite preferred if within 1.6x nearest distance (so they don't run across the map)
+    if (elite && eliteD <= nearestD * 1.6) return elite;
+    return nearest;
+  }
+
+  // QOL: Compute boss special attack telegraph (warning 1.5s before special fires)
+  computeBossTelegraph(): { name: string; timer: number } | null {
+    const b = this.currentBoss;
+    if (!b || !b.isBoss || !b.bossKind) return null;
+    const timer = b.bossSpecialTimer ?? 0;
+    // Only telegraph if special is about to fire (within 1.5s)
+    if (timer > 1.5 || timer <= 0) return null;
+    const names: Record<string, string> = {
+      bell_knight: 'SHOCKWAVE',
+      twins: 'SUMMON ADDS',
+      sun_priest: 'PURGE',
+      bone_dragon: 'BONE SPIRAL',
+      wraith_queen: 'TELEPORT + SUMMON',
+      bone_colossus: 'SUMMON + HEAL',
+    };
+    return {
+      name: names[b.bossKind] ?? 'SPECIAL',
+      timer: Math.max(0, timer),
+    };
+  }
+
   emitHud() {
     const p = this.player;
     const snapshot: HudSnapshot = {
@@ -3753,6 +3845,24 @@ export class GameEngine {
       comboTimer: p.comboTimer,
       comboMax: p.comboMax,
       elitesKilled: this.elitesKilled,
+      // QOL fields
+      timeSurvived: this.gameTime,
+      damageTaken: Math.round(this.damageTaken),
+      damageDealt: Math.round(this.damageDealt),
+      buildPaths: {
+        necromancy: countSkillsInPath(p, 'necromancy'),
+        wand: countSkillsInPath(p, 'wand'),
+        survival: countSkillsInPath(p, 'survival'),
+        generic: countSkillsInPath(p, 'generic'),
+      },
+      targetId: this.currentTargetId,
+      targetX: this.currentTargetId
+        ? this.enemies.find((e) => e.id === this.currentTargetId)?.x ?? 0
+        : 0,
+      targetY: this.currentTargetId
+        ? this.enemies.find((e) => e.id === this.currentTargetId)?.y ?? 0
+        : 0,
+      bossSpecialTelegraph: this.computeBossTelegraph(),
       cooldowns: {
         dash: p.dashCooldownTimer,
         dashMax: p.dashCooldown,

@@ -812,13 +812,13 @@ export const UPGRADES: Upgrade[] = [
   {
     id: 'execute',
     name: 'Execute',
-    description: 'Instantly kill enemies below 10% HP (+5% per stack).',
+    description: 'Instantly kill non-boss enemies below 25% HP.',
     path: 'wand',
-    rarity: 'rare',
+    rarity: 'epic',
     icon: '⚔',
-    requires: (p) => p.executeThreshold < 0.3,
+    requires: (p) => !p.skills.has('execute'),
     apply: (p) => {
-      p.executeThreshold += 0.1;
+      p.executeThreshold = 0.25;
       p.skills.add('execute');
     },
   },
@@ -855,14 +855,14 @@ export const UPGRADES: Upgrade[] = [
   {
     id: 'plague_bats',
     name: 'Plague Bats',
-    description: 'Summon 3 flying bats that swarm enemies.',
+    description: 'Summon 5 flying bats that swarm enemies (persistent).',
     path: 'necromancy',
-    rarity: 'rare',
+    rarity: 'epic',
     icon: '🦇',
-    requires: (p) => p.plagueBatsLevel < 3,
+    requires: (p) => !p.skills.has('plague_bats') && p.maxMinions >= 4,
     apply: (p) => {
-      p.plagueBatsLevel += 1;
-      p.maxMinions += 3;
+      p.plagueBatsLevel = 1;
+      p.maxMinions += 5;
       p.skills.add('plague_bats');
     },
   },
@@ -951,52 +951,52 @@ export const UPGRADES: Upgrade[] = [
   {
     id: 'black_hole',
     name: 'Black Hole',
-    description: 'AUTO: Every 15s, open a singularity that pulls and shreds enemies.',
+    description: 'AUTO: Every 15s, open a massive singularity that pulls and shreds enemies.',
     path: 'generic',
-    rarity: 'rare',
+    rarity: 'epic',
     icon: '⚫',
-    requires: (p) => p.blackHoleLevel < 3,
+    requires: (p) => !p.skills.has('black_hole'),
     apply: (p) => {
-      p.blackHoleLevel += 1;
+      p.blackHoleLevel = 1;
       p.skills.add('black_hole');
     },
   },
   {
     id: 'meteor_strike',
     name: 'Meteor Strike',
-    description: 'AUTO: Every 5s, a meteor crashes on a random enemy.',
+    description: 'AUTO: Every 5s, a devastating meteor crashes on the strongest enemy.',
     path: 'generic',
-    rarity: 'rare',
+    rarity: 'epic',
     icon: '☄',
-    requires: (p) => p.meteorLevel < 3,
+    requires: (p) => !p.skills.has('meteor_strike'),
     apply: (p) => {
-      p.meteorLevel += 1;
+      p.meteorLevel = 1;
       p.skills.add('meteor_strike');
     },
   },
   {
     id: 'time_warp',
     name: 'Time Warp',
-    description: 'AUTO: Every 18s, slow ALL enemies for 4s.',
+    description: 'AUTO: Every 18s, slow ALL enemies to 30% speed for 5s.',
     path: 'generic',
-    rarity: 'rare',
+    rarity: 'epic',
     icon: '⏱',
-    requires: (p) => p.timeWarpLevel < 3,
+    requires: (p) => !p.skills.has('time_warp'),
     apply: (p) => {
-      p.timeWarpLevel += 1;
+      p.timeWarpLevel = 1;
       p.skills.add('time_warp');
     },
   },
   {
     id: 'earthquake',
     name: 'Earthquake',
-    description: 'AUTO: Every 12s, shockwave damages and knocks back all enemies.',
+    description: 'AUTO: Every 12s, a massive shockwave damages and knocks back ALL enemies.',
     path: 'generic',
-    rarity: 'rare',
+    rarity: 'epic',
     icon: '🌐',
-    requires: (p) => p.earthquakeLevel < 3,
+    requires: (p) => !p.skills.has('earthquake'),
     apply: (p) => {
-      p.earthquakeLevel += 1;
+      p.earthquakeLevel = 1;
       p.skills.add('earthquake');
     },
   },
@@ -1005,13 +1005,13 @@ export const UPGRADES: Upgrade[] = [
   {
     id: 'blessed_by_god',
     name: 'I AM BLESSED BY GOD',
-    description: 'DIVINE: Enemies have a chance to drop golden chests containing RARE+ skills!',
+    description: 'DIVINE: 12% chance for non-boss enemies to drop golden chests containing RARE+ skills!',
     path: 'generic',
-    rarity: 'rare',
+    rarity: 'epic',
     icon: '✨',
-    requires: (p) => p.blessedByGodLevel < 3,
+    requires: (p) => !p.skills.has('blessed_by_god'),
     apply: (p) => {
-      p.blessedByGodLevel += 1;
+      p.blessedByGodLevel = 3; // max power from one pickup
       p.skills.add('blessed_by_god');
     },
   },

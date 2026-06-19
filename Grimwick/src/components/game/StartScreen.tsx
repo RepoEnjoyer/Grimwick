@@ -117,14 +117,15 @@ export function StartScreen({
         </div>
         <div>WASD / Arrows — Move</div>
         <div>ESC — Pause</div>
+        <div>R — Quick Restart / Reroll (context-sensitive)</div>
         <div className="mt-2 text-zinc-500 uppercase tracking-wider">
           Auto Systems
         </div>
-        <div>✦ Wand auto-fires nearest enemy</div>
+        <div>✦ Wand auto-fires (smart target: boss &gt; elite &gt; nearest)</div>
         <div>✦ All abilities auto-cast</div>
         <div>✦ Soul meter charges from kills → Soul Nova</div>
         <div>✦ Minions raise automatically from kills</div>
-        <div>✦ Chain kills for COMBO bonuses (10/25/50/100)</div>
+        <div>✦ Boss specials telegraph 1.5s before firing</div>
         <div>✦ Elite enemies (⚡) drop bonus souls &amp; relics</div>
       </div>
     </div>

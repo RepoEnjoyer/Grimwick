@@ -48,6 +48,13 @@ export function GameCanvas() {
     roomsCleared: number;
     bossesDefeated: number;
     reachedVictory: boolean;
+    timeSurvived: number;
+    damageTaken: number;
+    damageDealt: number;
+    kills: number;
+    elitesKilled: number;
+    maxCombo: number;
+    skillsCount: number;
   } | null>(null);
   const [progress, setProgress] = useState<PermanentProgress>(() =>
     loadProgress()
@@ -150,6 +157,29 @@ export function GameCanvas() {
     setShowCrypt(false);
   }, [selectedWandType]);
 
+  // QOL: Global R hotkey — Restart from death/pause, or Reroll in upgrade/chest screen
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      if (k !== 'r') return;
+      const engine = engineRef.current;
+      if (!engine) return;
+      if (engine.phase === 'dead') {
+        e.preventDefault();
+        startNewRun();
+      } else if (engine.phase === 'paused') {
+        e.preventDefault();
+        engine.resume();
+        startNewRun();
+      } else if (engine.phase === 'upgrade' || engine.phase === 'chest') {
+        e.preventDefault();
+        engine.rerollChoices();
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [startNewRun]);
+
   const handleChooseUpgrade = (idx: number) => {
     engineRef.current?.chooseUpgrade(idx);
   };
@@ -202,6 +232,11 @@ export function GameCanvas() {
         wave: '1/2',
         skills: [],
         relics: [],
+        timeSurvived: 0,
+        damageTaken: 0,
+        damageDealt: 0,
+        elitesKilled: 0,
+        maxCombo: 0,
       }
     );
   }, []);

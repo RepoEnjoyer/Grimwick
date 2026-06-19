@@ -456,12 +456,29 @@ export interface HudSnapshot {
   // soul meter (new)
   soulMeter: number;
   soulMeterMax: number;
-  // combo system
+  // combo system (internal — no UI bar, but Bloodlust combo skill triggers on milestones)
   comboCount: number;
   comboTimer: number;
   comboMax: number;
   // elites slain this run
   elitesKilled: number;
+  // ===== QOL FIELDS =====
+  timeSurvived: number; // seconds since run start
+  damageTaken: number; // total damage taken this run
+  damageDealt: number; // total damage dealt this run
+  buildPaths: {
+    necromancy: number;
+    wand: number;
+    survival: number;
+    generic: number;
+  };
+  targetId: number | null; // current wand target enemy id (for target indicator)
+  targetX: number; // target enemy x
+  targetY: number; // target enemy y
+  bossSpecialTelegraph: {
+    name: string;
+    timer: number; // seconds until special fires
+  } | null;
   cooldowns: {
     dash: number;
     dashMax: number;

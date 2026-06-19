@@ -15,6 +15,12 @@ interface BuildSummary {
   wave: string;
   skills: string[];
   relics: { id: string; name: string; icon: string; description: string }[];
+  // QOL: extended stats
+  timeSurvived: number;
+  damageTaken: number;
+  damageDealt: number;
+  elitesKilled: number;
+  maxCombo: number;
 }
 
 interface Props {
@@ -161,6 +167,19 @@ export function PauseMenu({ getSummary, onResume, onRestart, onReturnToMenu }: P
           <StatCard label="Wand" value={summary.wandType} color="text-zinc-300" />
         </div>
 
+        {/* QOL: Extended combat stats */}
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-5">
+          <StatCard
+            label="Time"
+            value={`${Math.floor(summary.timeSurvived / 60)}:${Math.floor(summary.timeSurvived % 60).toString().padStart(2, '0')}`}
+            color="text-cyan-300"
+          />
+          <StatCard label="Elites" value={summary.elitesKilled} color="text-amber-300" />
+          <StatCard label="Max Combo" value={`${summary.maxCombo}x`} color="text-orange-300" />
+          <StatCard label="DMG Dealt" value={summary.damageDealt.toLocaleString()} color="text-green-300" />
+          <StatCard label="DMG Taken" value={summary.damageTaken.toLocaleString()} color="text-rose-300" />
+        </div>
+
         {/* Skills */}
         {summary.skills.length > 0 && (
           <div className="mb-5">
@@ -215,7 +234,7 @@ export function PauseMenu({ getSummary, onResume, onRestart, onReturnToMenu }: P
               onClick={onRestart}
               className="py-2.5 text-xs font-bold tracking-widest border-2 border-zinc-600 text-zinc-300 bg-zinc-900/60 rounded-sm hover:border-amber-500 hover:text-amber-300 transition-all"
             >
-              ↻ RESTART RUN
+              ↻ RESTART RUN <span className="text-[10px] ml-1 opacity-70">[R]</span>
             </button>
             <button
               onClick={onReturnToMenu}

@@ -148,7 +148,7 @@ export function UpgradeScreen({ choices, onChoose, onReroll, isRelic, isChest, s
               : 'border-zinc-700 text-zinc-600 bg-zinc-900/40 cursor-not-allowed'
           }`}
         >
-          ↻ REROLL ({REROLL_COST} souls)
+          ↻ REROLL ({REROLL_COST} souls) <span className="text-[10px] ml-1 opacity-70">[R]</span>
         </button>
         <span className="text-[10px] text-zinc-500">
           You have <span className="text-purple-300 font-bold">{soulsCollected}</span> souls

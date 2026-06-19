@@ -123,6 +123,48 @@ export function drawGame(engine: GameEngine) {
     drawBoneStorm(ctx, engine.player, t);
   }
 
+  // ===== QOL: Target indicator (small crosshair on current wand target) =====
+  if (engine.currentTargetId && engine.phase === 'playing') {
+    const target = engine.enemies.find((e) => e.id === engine.currentTargetId);
+    if (target) {
+      ctx.save();
+      ctx.translate(target.x, target.y);
+      const pulse = 1 + Math.sin(t * 8) * 0.15;
+      // 4 corner brackets
+      const r = target.radius * 1.4 * pulse;
+      const bracketLen = 6;
+      ctx.strokeStyle = '#ffd040';
+      ctx.lineWidth = 2;
+      ctx.shadowColor = '#ffd040';
+      ctx.shadowBlur = 6;
+      // top-left
+      ctx.beginPath();
+      ctx.moveTo(-r, -r + bracketLen);
+      ctx.lineTo(-r, -r);
+      ctx.lineTo(-r + bracketLen, -r);
+      ctx.stroke();
+      // top-right
+      ctx.beginPath();
+      ctx.moveTo(r - bracketLen, -r);
+      ctx.lineTo(r, -r);
+      ctx.lineTo(r, -r + bracketLen);
+      ctx.stroke();
+      // bottom-left
+      ctx.beginPath();
+      ctx.moveTo(-r, r - bracketLen);
+      ctx.lineTo(-r, r);
+      ctx.lineTo(-r + bracketLen, r);
+      ctx.stroke();
+      // bottom-right
+      ctx.beginPath();
+      ctx.moveTo(r - bracketLen, r);
+      ctx.lineTo(r, r);
+      ctx.lineTo(r, r - bracketLen);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   // ===== player =====
   drawPlayer(ctx, engine.player, t, engine);
 
