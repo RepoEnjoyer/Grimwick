@@ -18,6 +18,7 @@ export function GameCanvas() {
   const [hud, setHud] = useState<HudSnapshot | null>(null);
   const [upgradeChoices, setUpgradeChoices] = useState<Upgrade[]>([]);
   const [relicChoices, setRelicChoices] = useState<Relic[]>([]);
+  const [chestChoices, setChestChoices] = useState<Upgrade[]>([]);
   const [relicMode, setRelicMode] = useState(false);
   const [deathResult, setDeathResult] = useState<{
     soulsCollected: number;
@@ -50,18 +51,23 @@ export function GameCanvas() {
           setRelicChoices(r);
           setRelicMode(true);
         },
+        onChestChoices: (c) => {
+          setChestChoices(c);
+        },
         onDeath: (r) => {
           setDeathResult(r);
-          // record run for permanent progression
+          // Re-load FRESH progress from localStorage (prog closure may be stale
+          // if player bought Crypt Hub upgrades after mount)
+          const fresh = loadProgress();
           const updated: PermanentProgress = {
-            ...prog,
-            soulShards: prog.soulShards + r.soulsCollected,
-            totalSouls: prog.totalSouls + r.soulsCollected,
-            runsCompleted: prog.runsCompleted + 1,
-            bossesDefeated: prog.bossesDefeated + r.bossesDefeated,
-            highestRoom: Math.max(prog.highestRoom, r.roomsCleared),
+            ...fresh,
+            soulShards: fresh.soulShards + r.soulsCollected,
+            totalSouls: fresh.totalSouls + r.soulsCollected,
+            runsCompleted: fresh.runsCompleted + 1,
+            bossesDefeated: fresh.bossesDefeated + r.bossesDefeated,
+            highestRoom: Math.max(fresh.highestRoom, r.roomsCleared),
           };
-          // persist
+          // persist immediately (auto-save)
           try {
             localStorage.setItem('grimwick_save_v1', JSON.stringify(updated));
           } catch {
@@ -124,6 +130,12 @@ export function GameCanvas() {
   };
   const handleChooseRelic = (idx: number) => {
     engineRef.current?.chooseRelic(idx);
+  };
+  const handleChooseChest = (idx: number) => {
+    engineRef.current?.chooseChestUpgrade(idx);
+  };
+  const handleReroll = () => {
+    engineRef.current?.rerollChoices();
   };
 
   const handleReturnToMenu = () => {
@@ -205,7 +217,9 @@ export function GameCanvas() {
           <UpgradeScreen
             choices={upgradeChoices}
             onChoose={handleChooseUpgrade}
+            onReroll={handleReroll}
             isRelic={false}
+            soulsCollected={hud?.souls ?? 0}
           />
         )}
         {phase === 'upgrade' && relicMode && relicChoices.length > 0 && (
@@ -220,7 +234,21 @@ export function GameCanvas() {
               icon: r.icon,
             }))}
             onChoose={handleChooseRelic}
+            onReroll={handleReroll}
             isRelic={true}
+            soulsCollected={hud?.souls ?? 0}
+          />
+        )}
+
+        {/* Chest reward screen (Blessed by God) */}
+        {phase === 'chest' && chestChoices.length > 0 && (
+          <UpgradeScreen
+            choices={chestChoices}
+            onChoose={handleChooseChest}
+            onReroll={handleReroll}
+            isRelic={false}
+            isChest={true}
+            soulsCollected={hud?.souls ?? 0}
           />
         )}
 

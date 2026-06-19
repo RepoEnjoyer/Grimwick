@@ -5,6 +5,7 @@ export type GamePhase =
   | 'playing'
   | 'paused'
   | 'upgrade'
+  | 'chest'
   | 'dead'
   | 'crypt';
 
@@ -23,7 +24,26 @@ export type EnemyKind =
   | 'banshee'
   | 'bonebeast';
 
-export type BossKind = 'bell_knight' | 'twins' | 'sun_priest' | 'bone_dragon';
+export type BossKind =
+  | 'bell_knight'
+  | 'twins'
+  | 'sun_priest'
+  | 'bone_dragon'
+  | 'wraith_queen'
+  | 'bone_colossus';
+
+// Elite enemy affixes — champions spawn with 1-2 of these modifiers
+export type EliteAffix =
+  | 'swift' // +60% move/attack speed
+  | 'colossal' // +200% HP, +50% size, -30% speed
+  | 'volatile' // explodes on death (AoE damage)
+  | 'vampiric' // heals on hit, drops 2x souls
+  | 'splitter' // spawns 2 smaller versions on death
+  | 'resurrective' // revives once at 50% HP
+  | 'ethereal' // 30% chance to phase through attacks
+  | 'vengeful' // gains enrage speed boost at low HP; +30% damage
+  | 'toxic' // leaves poison trail; applies DoT on hit
+  | 'shielded'; // has a regenerating damage shield
 
 export interface Vec2 {
   x: number;
@@ -141,6 +161,13 @@ export interface Player {
   timeWarpActive: number; // active slow timer
   earthquakeLevel: number;
   earthquakeTimer: number;
+  // ===== BLESSED BY GOD =====
+  blessedByGodLevel: number; // chance for enemies to drop golden chests
+
+  // ===== COMBO SYSTEM =====
+  comboCount: number; // current kill streak
+  comboTimer: number; // seconds remaining before combo resets
+  comboMax: number; // highest combo this run
 
   // bookkeeping
   lastFireTime: number;
@@ -200,6 +227,17 @@ export interface Enemy {
   slowTimer: number; // frost/time warp slow effect
   slowMult: number; // multiplier when slowed (0.5 = half speed)
   markedTimer: number; // marked for death (takes bonus damage)
+  // ===== ELITE FIELDS =====
+  isElite: boolean;
+  eliteAffixes: EliteAffix[];
+  eliteShieldHp: number; // for shielded affix
+  eliteShieldMax: number;
+  eliteShieldRegenTimer: number; // delay before shield regenerates
+  resurrectedOnce: boolean; // for resurrective affix
+  poisonTrailTimer: number; // for toxic affix
+  enraged: boolean; // for vengeful affix
+  baseSpeed: number; // for enrage calculations
+  baseDamage: number; // for enrage calculations
   isBoss?: boolean;
   bossKind?: BossKind;
   bossPhase?: number;
@@ -238,7 +276,7 @@ export interface Soul {
   vx: number;
   vy: number;
   value: number;
-  kind: 'normal' | 'heal';
+  kind: 'normal' | 'heal' | 'chest';
   life: number;
   collected: boolean;
   magnetized: boolean;
@@ -319,6 +357,8 @@ export interface FloatingText {
   life: number;
   color: string;
   vy: number;
+  size?: number; // font size in px
+  bold?: boolean;
 }
 
 export interface Upgrade {
@@ -386,6 +426,12 @@ export interface HudSnapshot {
   // soul meter (new)
   soulMeter: number;
   soulMeterMax: number;
+  // combo system
+  comboCount: number;
+  comboTimer: number;
+  comboMax: number;
+  // elites slain this run
+  elitesKilled: number;
   cooldowns: {
     dash: number;
     dashMax: number;

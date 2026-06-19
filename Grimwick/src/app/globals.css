@@ -120,3 +120,43 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ===== Chroma animation for "I AM BLESSED BY GOD" skill ===== */
+@keyframes chroma-shift {
+  0%   { color: #ff4040; text-shadow: 0 0 12px #ff4040; }
+  10%  { color: #ff8040; text-shadow: 0 0 12px #ff8040; }
+  20%  { color: #ffd040; text-shadow: 0 0 12px #ffd040; }
+  30%  { color: #80ff40; text-shadow: 0 0 12px #80ff40; }
+  40%  { color: #40ff80; text-shadow: 0 0 12px #40ff80; }
+  50%  { color: #40ffff; text-shadow: 0 0 12px #40ffff; }
+  60%  { color: #4080ff; text-shadow: 0 0 12px #4080ff; }
+  70%  { color: #6040ff; text-shadow: 0 0 12px #6040ff; }
+  80%  { color: #c040ff; text-shadow: 0 0 12px #c040ff; }
+  90%  { color: #ff40c0; text-shadow: 0 0 12px #ff40c0; }
+  100% { color: #ff4040; text-shadow: 0 0 12px #ff4040; }
+}
+
+.chroma-text {
+  animation: chroma-shift 3s linear infinite;
+  background: linear-gradient(
+    90deg,
+    #ff4040, #ff8040, #ffd040, #80ff40, #40ff80,
+    #40ffff, #4080ff, #6040ff, #c040ff, #ff40c0, #ff4040
+  );
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: chroma-shift-bg 3s linear infinite;
+}
+
+@keyframes chroma-shift-bg {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 300% 50%; }
+}
+
+.chroma-border {
+  animation: chroma-shift 3s linear infinite;
+  border-width: 2px;
+  border-style: solid;
+}

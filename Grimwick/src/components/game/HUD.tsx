@@ -72,6 +72,13 @@ const SKILL_NAMES: Record<string, string> = {
   meteor_strike: 'Meteor Strike',
   time_warp: 'Time Warp',
   earthquake: 'Earthquake',
+  blessed_by_god: 'I AM BLESSED BY GOD',
+  soul_harvest: 'Soul Harvest',
+  undead_frenzy: 'Undead Frenzy',
+  phoenix_will: 'Phoenix Will',
+  soul_magnet_aura: 'Soul Magnet Aura',
+  overcharge: 'Overcharge',
+  twin_souls: 'Twin Souls',
 };
 
 function AutoCooldownBar({

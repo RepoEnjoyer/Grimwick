@@ -2,6 +2,7 @@
 import {
   BOSS_ROOM_SCHEDULE,
   BOSS_TEMPLATES,
+  ELITE_AFFIXES,
   ENEMY_TEMPLATES,
   RELICS,
   UPGRADES,
@@ -10,6 +11,7 @@ import {
   enemyDamageScale,
   enemyHpScale,
   generateWave,
+  rollEliteAffixes,
   wavesPerRoom,
 } from './content';
 import type {
@@ -18,6 +20,7 @@ import type {
   BossKind,
   BuildPath,
   CursedGroundCircle,
+  EliteAffix,
   Enemy,
   EnemyKind,
   FloatingText,
@@ -41,6 +44,7 @@ export interface EngineCallbacks {
   onHudUpdate: (snapshot: HudSnapshot) => void;
   onUpgradeChoices: (choices: Upgrade[]) => void;
   onRelicChoices: (relics: Relic[]) => void;
+  onChestChoices: (choices: Upgrade[]) => void;
   onDeath: (result: {
     soulsCollected: number;
     roomsCleared: number;
@@ -94,7 +98,10 @@ export class GameEngine {
   roomCleared = false;
   upgradeChoices: Upgrade[] = [];
   relicChoices: Relic[] = [];
+  chestChoices: Upgrade[] = [];
   pendingRelicChoice = false;
+  pendingChestChoice = false;
+  rerollsUsed = 0;
   currentBoss: Enemy | null = null;
 
   // input
@@ -121,6 +128,9 @@ export class GameEngine {
   // NEW minion spawn flags
   boneGolemSpawned = false;
   batsSpawned = 0;
+  // NEW elite/combo tracking
+  elitesKilled = 0;
+  eliteSpawnCounter = 0; // increments per spawn; elites every N spawns
 
   permanentBonuses: {
     healthBonus: number;
@@ -187,6 +197,8 @@ export class GameEngine {
     this.cursedGroundSpawnTimer = 0;
     this.currentBoss = null;
     this.shotCounter = 0;
+    this.elitesKilled = 0;
+    this.eliteSpawnCounter = 0;
     this.setPhase('playing');
     this.startNextRoom();
     this.emitHud();
@@ -710,6 +722,34 @@ export class GameEngine {
     this.spawnFloatingText(p.x, p.y - 40, 'SOUL NOVA!', '#b58cff');
     // brief iframes
     p.iframes = Math.max(p.iframes, 0.5);
+    // Twin Souls: trigger a 2nd nova at 50% damage after a short delay
+    if (p.skills.has('twin_souls')) {
+      setTimeout(() => {
+        if (this.phase !== 'playing') return;
+        const novaDmg2 = p.damage * (p.skills.has('soul_battery') ? 4.5 : 3);
+        for (const e of this.enemies) {
+          const d = Math.hypot(e.x - p.x, e.y - p.y);
+          if (d < 350) {
+            this.damageEnemy(e, novaDmg2, null);
+          }
+        }
+        for (let i = 0; i < 40; i++) {
+          const a = (i / 40) * Math.PI * 2;
+          this.particles.push({
+            x: p.x,
+            y: p.y,
+            vx: Math.cos(a) * 400,
+            vy: Math.sin(a) * 400,
+            life: 0.6,
+            maxLife: 0.6,
+            radius: 5,
+            color: '#ff80ff',
+            kind: 'soul',
+          });
+        }
+        this.spawnFloatingText(p.x, p.y - 40, 'TWIN SOULS!', '#ff80ff');
+      }, 300);
+    }
   }
 
   // ===== NEW UNIQUE POWER METHODS =====
@@ -1997,7 +2037,7 @@ export class GameEngine {
       radius,
       life: duration,
       attackCooldown: 0,
-      attackInterval: kind === 'crawler' ? 0.4 : 0.8,
+      attackInterval: (kind === 'crawler' ? 0.4 : 0.8) * (p.skills.has('undead_frenzy') ? 0.6 : 1),
       kind,
       isFamiliar: kind === 'familiar',
       shootCooldown: 0,
@@ -2034,6 +2074,9 @@ export class GameEngine {
         if (s.kind === 'heal') {
           p.hp = Math.min(p.maxHp, p.hp + 8);
           this.spawnFloatingText(p.x, p.y - 24, '+8', '#7affa0');
+        } else if (s.kind === 'chest') {
+          // Golden chest — open reward screen with RARE+ skills
+          this.openGoldenChest();
         } else {
           const gain = Math.max(1, Math.round(s.value * p.soulGainMult));
           p.soulsCollected += gain;
@@ -2308,6 +2351,47 @@ export class GameEngine {
     const tpl = ENEMY_TEMPLATES[kind];
     const hpScale = enemyHpScale(this.roomNumber);
     const dmgScale = enemyDamageScale(this.roomNumber);
+
+    // ===== ELITE SPAWN LOGIC =====
+    // Base chance scales with room depth. After room 2, every 6-10 spawns one elite.
+    this.eliteSpawnCounter++;
+    let isElite = false;
+    let affixes: EliteAffix[] = [];
+    if (this.roomNumber >= 2) {
+      // rough chance per spawn: 4% + room * 1%, capped at 12%
+      const chance = Math.min(0.12, 0.04 + this.roomNumber * 0.01);
+      // Force-spawn elite every 12 enemies if we haven't had one this cycle
+      const forceElite = this.eliteSpawnCounter >= 12;
+      if (forceElite || Math.random() < chance) {
+        isElite = true;
+        this.eliteSpawnCounter = 0;
+        const affixCount = this.roomNumber >= 8 ? 2 : 1;
+        affixes = rollEliteAffixes(affixCount);
+      }
+    }
+
+    // Apply affix multipliers
+    let hpMult = 1;
+    let dmgMult = 1;
+    let spdMult = 1;
+    let sizeMult = 1;
+    let soulMult = 1;
+    if (isElite) {
+      for (const a of affixes) {
+        const d = ELITE_AFFIXES[a];
+        hpMult *= d.hpMult;
+        dmgMult *= d.damageMult;
+        spdMult *= d.speedMult;
+        sizeMult *= d.sizeMult;
+        soulMult *= d.soulValueMult;
+      }
+    }
+
+    const baseHp = tpl.hp * hpScale * hpMult;
+    const baseSpeed = tpl.speed * spdMult;
+    const baseDamage = tpl.damage * dmgScale * dmgMult;
+    const baseRadius = tpl.radius * sizeMult;
+
     this.enemies.push({
       id: this.nextEnemyId++,
       kind,
@@ -2315,13 +2399,13 @@ export class GameEngine {
       y,
       vx: 0,
       vy: 0,
-      hp: tpl.hp * hpScale,
-      maxHp: tpl.hp * hpScale,
-      damage: tpl.damage * dmgScale,
-      speed: tpl.speed,
-      radius: tpl.radius,
+      hp: baseHp,
+      maxHp: baseHp,
+      damage: baseDamage,
+      speed: baseSpeed,
+      radius: baseRadius,
       attackCooldown: 0.5,
-      attackInterval: tpl.attackInterval,
+      attackInterval: tpl.attackInterval / (isElite && affixes.includes('swift') ? 1.6 : 1),
       hitFlash: 0,
       dotTimer: 0,
       dotDamage: 0,
@@ -2332,10 +2416,26 @@ export class GameEngine {
       slowTimer: 0,
       slowMult: 1,
       markedTimer: 0,
+      isElite,
+      eliteAffixes: affixes,
+      eliteShieldHp: isElite && affixes.includes('shielded') ? baseHp * 0.4 : 0,
+      eliteShieldMax: isElite && affixes.includes('shielded') ? baseHp * 0.4 : 0,
+      eliteShieldRegenTimer: 0,
+      resurrectedOnce: false,
+      poisonTrailTimer: 0,
+      enraged: false,
+      baseSpeed,
+      baseDamage,
       color: tpl.color,
-      soulValue: tpl.soulValue,
+      soulValue: Math.round(tpl.soulValue * soulMult),
     });
-    this.spawnParticles(x, y, 8, '#7a3a3a', 'smoke', 0.4);
+    if (isElite) {
+      // dramatic spawn effect
+      this.spawnParticles(x, y, 16, ELITE_AFFIXES[affixes[0]].color, 'magic', 0.6);
+      this.spawnFloatingText(x, y - 30, 'ELITE!', '#ffd040');
+    } else {
+      this.spawnParticles(x, y, 8, '#7a3a3a', 'smoke', 0.4);
+    }
   }
 
   spawnBoss(kind: BossKind, x: number, y: number, siblingId?: number) {
@@ -2364,6 +2464,16 @@ export class GameEngine {
       slowTimer: 0,
       slowMult: 1,
       markedTimer: 0,
+      isElite: false,
+      eliteAffixes: [],
+      eliteShieldHp: 0,
+      eliteShieldMax: 0,
+      eliteShieldRegenTimer: 0,
+      resurrectedOnce: false,
+      poisonTrailTimer: 0,
+      enraged: false,
+      baseSpeed: tpl.speed,
+      baseDamage: tpl.damage,
       isBoss: true,
       bossKind: kind,
       bossPhase: 1,
@@ -2389,6 +2499,15 @@ export class GameEngine {
 
   // ---------------- combat ----------------
   damageEnemy(e: Enemy, dmg: number, pr: Projectile | null) {
+    // ===== ELITE: ethereal — 30% chance to phase through attacks =====
+    if (e.isElite && e.eliteAffixes.includes('ethereal') && !e.isBoss) {
+      if (Math.random() < 0.3) {
+        this.spawnParticles(e.x, e.y, 5, '#b8e0ff', 'magic', 0.3);
+        this.spawnDamageNumber(e.x, e.y - e.radius - 6, 'PHASE', '#b8e0ff', 12);
+        return;
+      }
+    }
+
     // paladin shield: block projectile from front
     if (e.shielded && pr) {
       const angToPr = Math.atan2(pr.y - e.y, pr.x - e.x);
@@ -2408,8 +2527,23 @@ export class GameEngine {
       }
     }
 
-    // NEW: mark of death bonus damage
-    let finalDmg = dmg;
+    // ===== ELITE: shielded affix — regenerating damage shield absorbs hits first =====
+    let dmgRemaining = dmg;
+    if (e.isElite && e.eliteAffixes.includes('shielded') && e.eliteShieldHp > 0) {
+      const absorbed = Math.min(e.eliteShieldHp, dmgRemaining);
+      e.eliteShieldHp -= absorbed;
+      dmgRemaining -= absorbed;
+      e.eliteShieldRegenTimer = 4; // delay before regen
+      this.spawnParticles(e.x, e.y, 6, '#7ad3ff', 'spark', 0.3);
+      this.spawnDamageNumber(e.x, e.y - e.radius - 6, `${Math.round(absorbed)}`, '#7ad3ff', 13);
+      if (e.eliteShieldHp <= 0) {
+        this.spawnFloatingText(e.x, e.y - 36, 'SHIELD BROKEN', '#7ad3ff');
+      }
+      if (dmgRemaining <= 0) return;
+    }
+
+    // mark of death bonus damage
+    let finalDmg = dmgRemaining;
     if (e.markedTimer > 0) {
       finalDmg *= 1.5;
     }
@@ -2417,7 +2551,36 @@ export class GameEngine {
     e.hp -= finalDmg;
     e.hitFlash = 0.1;
 
-    // NEW: mark of death — chance to mark enemy on hit
+    // ===== ELITE: vampiric — heals on hit (when dealing damage to player) handled in damagePlayer;
+    // but we also reward the player with bonus damage feedback if crit =====
+    // damage number
+    let dmgColor = '#ffffff';
+    let dmgSize = 13;
+    if (pr?.isCrit) {
+      dmgColor = '#ffd040';
+      dmgSize = 17;
+    } else if (pr?.frostLevel) {
+      dmgColor = '#7ad3ff';
+    } else if (pr?.chainLightningLevel) {
+      dmgColor = '#ffe070';
+    } else if (pr?.dotChance && pr.dotChance > 0) {
+      dmgColor = '#b58cff';
+    } else if (e.markedTimer > 0) {
+      dmgColor = '#ff4060';
+    }
+    // Only show damage number for meaningful damage to reduce spam
+    if (finalDmg >= 5) {
+      this.spawnDamageNumber(
+        e.x + (Math.random() - 0.5) * 10,
+        e.y - e.radius - 4,
+        `${Math.round(finalDmg)}`,
+        dmgColor,
+        dmgSize,
+        pr?.isCrit
+      );
+    }
+
+    // mark of death — chance to mark enemy on hit
     if (
       this.player.markOfDeathLevel > 0 &&
       e.markedTimer <= 0 &&
@@ -2433,6 +2596,21 @@ export class GameEngine {
       e.dotDamage = pr.dotDamage ?? 0;
     }
 
+    // ===== ELITE: vengeful — enrage when below 30% HP =====
+    if (
+      e.isElite &&
+      e.eliteAffixes.includes('vengeful') &&
+      !e.enraged &&
+      e.hp > 0 &&
+      e.hp <= e.maxHp * 0.3
+    ) {
+      e.enraged = true;
+      e.speed = e.baseSpeed * 1.5;
+      e.damage = e.baseDamage * 1.3;
+      this.spawnFloatingText(e.x, e.y - 40, 'ENRAGED!', '#ffd34d');
+      this.spawnParticles(e.x, e.y, 14, '#ffd34d', 'magic', 0.6);
+    }
+
     // soul drain
     if (this.player.soulDrainChance > 0 && Math.random() < this.player.soulDrainChance) {
       this.player.hp = Math.min(this.player.maxHp, this.player.hp + this.player.soulDrainAmount);
@@ -2443,6 +2621,20 @@ export class GameEngine {
       const idx = this.enemies.indexOf(e);
       if (idx >= 0) this.killEnemy(e, idx);
     }
+  }
+
+  // ===== NEW: damage number helper (uses floating text with size/bold) =====
+  spawnDamageNumber(x: number, y: number, text: string, color: string, size: number, bold?: boolean) {
+    this.floatingTexts.push({
+      x,
+      y,
+      text,
+      life: 0.8,
+      color,
+      vy: -50,
+      size,
+      bold: bold ?? false,
+    });
   }
 
   killEnemy(e: Enemy, idx: number) {
@@ -2481,6 +2673,33 @@ export class GameEngine {
         magnetized: false,
       });
     }
+
+    // NEW: Blessed by God — chance to drop golden chest
+    if (this.player.blessedByGodLevel > 0 && !e.isBoss) {
+      const chestChance = 0.04 * this.player.blessedByGodLevel; // 4% per level
+      if (Math.random() < chestChance) {
+        this.souls.push({
+          x: e.x,
+          y: e.y,
+          vx: 0,
+          vy: 0,
+          value: 0,
+          kind: 'chest',
+          life: 30, // chests last longer
+          collected: false,
+          magnetized: false,
+        });
+        this.spawnFloatingText(e.x, e.y - 20, '✨ GOLDEN CHEST!', '#ffd040');
+      }
+    }
+
+    // NEW: Soul Harvest — +1% damage per kill (capped at +50%)
+    if (this.player.skills.has('soul_harvest')) {
+      const bonus = Math.min(1.5, 1 + this.player.kills * 0.01) / Math.min(1.5, 1 + (this.player.kills - 1) * 0.01);
+      this.player.damage *= bonus;
+    }
+
+    // NEW: Vampiric Touch already handled above
 
     // death particles
     this.spawnParticles(e.x, e.y, 10, e.color, 'bone', 0.6);
@@ -2640,6 +2859,26 @@ export class GameEngine {
   undyingUsedThisRoom = false;
 
   handleDeath() {
+    // Phoenix Will: revive once per room at 50% HP
+    if (
+      this.player.skills.has('phoenix_will') &&
+      !this.phoenixUsedThisRoom
+    ) {
+      this.phoenixUsedThisRoom = true;
+      this.player.hp = Math.floor(this.player.maxHp * 0.5);
+      this.player.iframes = 2;
+      // explode in fire, damaging all nearby enemies
+      for (const e of this.enemies) {
+        const d = Math.hypot(e.x - this.player.x, e.y - this.player.y);
+        if (d < 200) {
+          this.damageEnemy(e, this.player.damage * 5, null);
+        }
+      }
+      this.spawnParticles(this.player.x, this.player.y, 40, '#ff6020', 'spark', 1);
+      this.spawnParticles(this.player.x, this.player.y, 20, '#ffd040', 'spark', 0.8);
+      this.spawnFloatingText(this.player.x, this.player.y - 40, 'PHOENIX WILL!', '#ff6020');
+      return;
+    }
     this.setPhase('dead');
     this.cb.onDeath({
       soulsCollected: this.player.soulsCollected,
@@ -2648,6 +2887,8 @@ export class GameEngine {
       reachedVictory: false,
     });
   }
+
+  phoenixUsedThisRoom = false;
 
   handleBossDefeated(kind: BossKind) {
     // increment counter via death callback later; just continue
@@ -2700,6 +2941,7 @@ export class GameEngine {
     this.roomCleared = false;
     this.betweenWaves = 0;
     this.undyingUsedThisRoom = false;
+    this.phoenixUsedThisRoom = false;
 
     // boss room check
     const bossEntry = BOSS_ROOM_SCHEDULE.find((b) => b.room === this.roomNumber);
@@ -2866,6 +3108,76 @@ export class GameEngine {
     this.relicChoices = [];
     this.pendingRelicChoice = false;
     this.continueAfterChoice();
+  }
+
+  // ===== GOLDEN CHEST (Blessed by God) =====
+  openGoldenChest() {
+    // Generate 3 RARE+ upgrade choices
+    const p = this.player;
+    const choices: Upgrade[] = [];
+    const available = UPGRADES.filter((u) => {
+      if (u.rarity === 'common') return false; // only rare and epic
+      if (u.requires && !u.requires(p)) return false;
+      return true;
+    });
+    const pool = [...available];
+    while (choices.length < 3 && pool.length > 0) {
+      const i = Math.floor(Math.random() * pool.length);
+      choices.push(pool.splice(i, 1)[0]);
+    }
+    if (choices.length === 0) {
+      // fallback: give any upgrade
+      this.offerUpgradeChoices();
+      return;
+    }
+    this.chestChoices = choices;
+    this.pendingChestChoice = true;
+    this.rerollsUsed = 0;
+    this.setPhase('chest');
+    this.cb.onChestChoices(choices);
+    this.spawnParticles(this.player.x, this.player.y, 30, '#ffd040', 'magic', 1);
+    this.spawnFloatingText(this.player.x, this.player.y - 40, '✨ GOLDEN CHEST!', '#ffd040');
+  }
+
+  chooseChestUpgrade(idx: number) {
+    const up = this.chestChoices[idx];
+    if (!up) return;
+    up.apply(this.player);
+    this.chestChoices = [];
+    this.pendingChestChoice = false;
+    // Chest rewards don't advance the room — just resume playing
+    this.setPhase('playing');
+  }
+
+  // ===== REROLL (refresh skill choices) =====
+  rerollChoices() {
+    // Only allow during upgrade or chest phase
+    if (this.phase !== 'upgrade' && this.phase !== 'chest') return;
+    // Cost: 50 souls per reroll
+    const cost = 50;
+    if (this.player.soulsCollected < cost) return;
+    this.player.soulsCollected -= cost;
+    this.rerollsUsed++;
+    if (this.phase === 'chest') {
+      // Re-generate chest choices (still RARE+)
+      const p = this.player;
+      const choices: Upgrade[] = [];
+      const available = UPGRADES.filter((u) => {
+        if (u.rarity === 'common') return false;
+        if (u.requires && !u.requires(p)) return false;
+        return true;
+      });
+      const pool = [...available];
+      while (choices.length < 3 && pool.length > 0) {
+        const i = Math.floor(Math.random() * pool.length);
+        choices.push(pool.splice(i, 1)[0]);
+      }
+      this.chestChoices = choices;
+      this.cb.onChestChoices(choices);
+    } else {
+      // Re-generate upgrade choices
+      this.offerUpgradeChoices();
+    }
   }
 
   continueAfterChoice() {

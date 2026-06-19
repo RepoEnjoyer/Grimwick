@@ -1,6 +1,7 @@
 // ===== Game content: skills, upgrades, relics, enemy/boss stats =====
 import type {
   BossKind,
+  EliteAffix,
   Enemy,
   EnemyKind,
   Player,
@@ -119,6 +120,11 @@ export function createStartingPlayer(permanentBonuses: {
     timeWarpActive: 0,
     earthquakeLevel: 0,
     earthquakeTimer: 0,
+    blessedByGodLevel: 0,
+
+    comboCount: 0,
+    comboTimer: 0,
+    comboMax: 0,
 
     lastFireTime: 0,
     iframes: 0,
@@ -967,6 +973,95 @@ export const UPGRADES: Upgrade[] = [
       p.skills.add('earthquake');
     },
   },
+
+  // ===== BLESSED BY GOD (chroma skill) =====
+  {
+    id: 'blessed_by_god',
+    name: 'I AM BLESSED BY GOD',
+    description: 'DIVINE: Enemies have a chance to drop golden chests containing RARE+ skills!',
+    path: 'generic',
+    rarity: 'epic',
+    icon: '✨',
+    requires: (p) => p.blessedByGodLevel < 3,
+    apply: (p) => {
+      p.blessedByGodLevel += 1;
+      p.skills.add('blessed_by_god');
+    },
+  },
+
+  // ===== MORE NEW SKILLS =====
+  {
+    id: 'soul_harvest',
+    name: 'Soul Harvest',
+    description: 'Killing enemies grants +1% damage (caps at +50%).',
+    path: 'wand',
+    rarity: 'rare',
+    icon: '🌾',
+    apply: (p) => {
+      p.skills.add('soul_harvest');
+    },
+  },
+  {
+    id: 'undead_frenzy',
+    name: 'Undead Frenzy',
+    description: 'Minions attack 40% faster.',
+    path: 'necromancy',
+    rarity: 'rare',
+    icon: '🔥',
+    apply: (p) => {
+      p.skills.add('undead_frenzy');
+    },
+  },
+  {
+    id: 'phoenix_will',
+    name: "Phoenix Will",
+    description: 'On death, explode in fire and revive once per room at 50% HP.',
+    path: 'survival',
+    rarity: 'epic',
+    icon: '🔥',
+    apply: (p) => {
+      p.skills.add('phoenix_will');
+    },
+  },
+  {
+    id: 'soul_magnet_aura',
+    name: 'Soul Magnet Aura',
+    description: 'Auto-collect all souls within 200px instantly.',
+    path: 'generic',
+    rarity: 'common',
+    icon: '🧲',
+    apply: (p) => {
+      p.soulPickupRange = Math.max(p.soulPickupRange, 200);
+      p.skills.add('soul_magnet_aura');
+    },
+  },
+  {
+    id: 'overcharge',
+    name: 'Overcharge',
+    description: '+50% fire rate, -20% damage. Glass cannon wand.',
+    path: 'wand',
+    rarity: 'rare',
+    icon: '⚡',
+    requires: (p) => !p.skills.has('overcharge'),
+    apply: (p) => {
+      p.fireRate *= 1.5;
+      p.damage *= 0.8;
+      p.wandLevel += 1;
+      p.skills.add('overcharge');
+    },
+  },
+  {
+    id: 'twin_souls',
+    name: 'Twin Souls',
+    description: 'Soul Nova triggers twice (2nd at 50% damage).',
+    path: 'generic',
+    rarity: 'epic',
+    icon: '☯',
+    requires: (p) => !p.skills.has('twin_souls'),
+    apply: (p) => {
+      p.skills.add('twin_souls');
+    },
+  },
 ];
 
 // ---------- Relics ----------
@@ -1227,7 +1322,168 @@ export const ENEMY_TEMPLATES: Record<EnemyKind, EnemyTemplate> = {
   },
 };
 
-// ---------- Boss stats ----------
+// ===== ELITE AFFIX SYSTEM =====
+export interface EliteAffixData {
+  id: EliteAffix;
+  name: string;
+  color: string; // aura color
+  description: string;
+  // stat multipliers
+  hpMult: number;
+  damageMult: number;
+  speedMult: number;
+  sizeMult: number;
+  soulValueMult: number;
+  // chance to spawn weight (higher = more common)
+  weight: number;
+}
+
+export const ELITE_AFFIXES: Record<EliteAffix, EliteAffixData> = {
+  swift: {
+    id: 'swift',
+    name: 'Swift',
+    color: '#7afcff',
+    description: '+60% movement & attack speed',
+    hpMult: 1.0,
+    damageMult: 1.0,
+    speedMult: 1.6,
+    sizeMult: 1.0,
+    soulValueMult: 2.0,
+    weight: 10,
+  },
+  colossal: {
+    id: 'colossal',
+    name: 'Colossal',
+    color: '#ff9a3c',
+    description: '+200% HP, +50% size, -30% speed',
+    hpMult: 3.0,
+    damageMult: 1.3,
+    speedMult: 0.7,
+    sizeMult: 1.5,
+    soulValueMult: 2.5,
+    weight: 8,
+  },
+  volatile: {
+    id: 'volatile',
+    name: 'Volatile',
+    color: '#ff5252',
+    description: 'Explodes violently on death',
+    hpMult: 1.2,
+    damageMult: 1.0,
+    speedMult: 1.0,
+    sizeMult: 1.1,
+    soulValueMult: 2.0,
+    weight: 9,
+  },
+  vampiric: {
+    id: 'vampiric',
+    name: 'Vampiric',
+    color: '#ff4d8d',
+    description: 'Heals on hit, drops 2x souls',
+    hpMult: 1.3,
+    damageMult: 1.0,
+    speedMult: 1.0,
+    sizeMult: 1.0,
+    soulValueMult: 2.0,
+    weight: 7,
+  },
+  splitter: {
+    id: 'splitter',
+    name: 'Splitter',
+    color: '#9dffb0',
+    description: 'Splits into 2 smaller versions on death',
+    hpMult: 1.0,
+    damageMult: 0.8,
+    speedMult: 1.0,
+    sizeMult: 1.15,
+    soulValueMult: 1.8,
+    weight: 7,
+  },
+  resurrective: {
+    id: 'resurrective',
+    name: 'Resurrective',
+    color: '#c08aff',
+    description: 'Revives once at 50% HP',
+    hpMult: 1.4,
+    damageMult: 1.1,
+    speedMult: 1.0,
+    sizeMult: 1.1,
+    soulValueMult: 2.2,
+    weight: 5,
+  },
+  ethereal: {
+    id: 'ethereal',
+    name: 'Ethereal',
+    color: '#b8e0ff',
+    description: '30% chance to phase through attacks',
+    hpMult: 1.0,
+    damageMult: 1.0,
+    speedMult: 1.1,
+    sizeMult: 1.0,
+    soulValueMult: 2.0,
+    weight: 6,
+  },
+  vengeful: {
+    id: 'vengeful',
+    name: 'Vengeful',
+    color: '#ffd34d',
+    description: 'Enrages at low HP, +50% speed & +30% damage',
+    hpMult: 1.2,
+    damageMult: 1.0,
+    speedMult: 1.0,
+    sizeMult: 1.05,
+    soulValueMult: 2.0,
+    weight: 7,
+  },
+  toxic: {
+    id: 'toxic',
+    name: 'Toxic',
+    color: '#7cff5a',
+    description: 'Leaves a poison trail; applies DoT on hit',
+    hpMult: 1.1,
+    damageMult: 1.0,
+    speedMult: 0.95,
+    sizeMult: 1.05,
+    soulValueMult: 2.0,
+    weight: 6,
+  },
+  shielded: {
+    id: 'shielded',
+    name: 'Shielded',
+    color: '#7ad3ff',
+    description: 'Has a regenerating damage shield',
+    hpMult: 1.0,
+    damageMult: 1.0,
+    speedMult: 0.9,
+    sizeMult: 1.1,
+    soulValueMult: 2.2,
+    weight: 5,
+  },
+};
+
+// Roll N random affixes for an elite (no duplicates)
+export function rollEliteAffixes(count: number): EliteAffix[] {
+  const entries = Object.values(ELITE_AFFIXES);
+  const out: EliteAffix[] = [];
+  const pool = [...entries];
+  for (let i = 0; i < count && pool.length > 0; i++) {
+    const totalWeight = pool.reduce((s, e) => s + e.weight, 0);
+    let r = Math.random() * totalWeight;
+    let idx = 0;
+    for (let j = 0; j < pool.length; j++) {
+      r -= pool[j].weight;
+      if (r <= 0) {
+        idx = j;
+        break;
+      }
+    }
+    out.push(pool[idx].id);
+    pool.splice(idx, 1);
+  }
+  return out;
+}
+
+// ===== BOSS TEMPLATES =====
 export interface BossTemplate {
   name: string;
   hp: number;
@@ -1275,13 +1531,33 @@ export const BOSS_TEMPLATES: Record<BossKind, BossTemplate> = {
     color: '#e8e0d0',
     soulValue: 200,
   },
+  wraith_queen: {
+    name: 'The Wraith Queen',
+    hp: 1100,
+    damage: 30,
+    speed: 110,
+    radius: 28,
+    color: '#c4a0ff',
+    soulValue: 120,
+  },
+  bone_colossus: {
+    name: 'The Bone Colossus',
+    hp: 2400,
+    damage: 40,
+    speed: 45,
+    radius: 48,
+    color: '#d8c8a8',
+    soulValue: 220,
+  },
 };
 
 // Boss spawn schedule (which room # spawns which boss)
 export const BOSS_ROOM_SCHEDULE: { room: number; boss: BossKind }[] = [
   { room: 4, boss: 'bell_knight' },
+  { room: 6, boss: 'wraith_queen' },
   { room: 8, boss: 'twins' },
   { room: 12, boss: 'sun_priest' },
+  { room: 14, boss: 'bone_colossus' },
   { room: 16, boss: 'bone_dragon' },
 ];
 

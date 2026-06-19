@@ -313,6 +313,43 @@ function drawSoul(ctx: CanvasRenderingContext2D, s: Soul, t: number) {
     ctx.textAlign = 'center';
     ctx.fillText('+', s.x, s.y + 4);
     ctx.restore();
+  } else if (s.kind === 'chest') {
+    // Golden chest — shiny animated treasure
+    const float = Math.sin(t * 4 + s.x) * 3;
+    ctx.save();
+    ctx.translate(s.x, s.y + float);
+    // golden glow aura
+    glowCircle(ctx, 0, 0, 16 * pulse, '#ffd040', 24);
+    glowCircle(ctx, 0, 0, 10 * pulse, '#ffe080', 16);
+    // chest body
+    ctx.fillStyle = '#a06020';
+    ctx.fillRect(-8, -2, 16, 10);
+    // chest lid
+    ctx.fillStyle = '#c08030';
+    ctx.beginPath();
+    ctx.arc(0, -2, 8, Math.PI, 0);
+    ctx.fill();
+    // gold trim
+    ctx.fillStyle = '#ffd040';
+    ctx.fillRect(-8, -3, 16, 2);
+    ctx.fillRect(-8, 3, 16, 2);
+    // lock
+    ctx.fillStyle = '#ffe060';
+    ctx.fillRect(-2, -1, 4, 5);
+    // sparkle stars
+    for (let i = 0; i < 3; i++) {
+      const a = t * 3 + (i * Math.PI * 2) / 3;
+      const r = 14 + Math.sin(t * 6 + i) * 3;
+      const sx = Math.cos(a) * r;
+      const sy = Math.sin(a) * r;
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = '#ffd040';
+      ctx.shadowBlur = 8;
+      ctx.fillRect(sx - 1, sy - 1, 2, 2);
+      ctx.fillRect(sx - 2, sy, 4, 1);
+      ctx.fillRect(sx, sy - 2, 1, 4);
+    }
+    ctx.restore();
   } else {
     glowCircle(ctx, s.x, s.y, 4 * pulse, '#b58cff', 12);
     glowCircle(ctx, s.x, s.y, 2 * pulse, '#ffffff', 6);
