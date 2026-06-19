@@ -17,6 +17,16 @@ export function createStartingPlayer(permanentBonuses: {
   minionPowerBonus: number;
   moveSpeedBonus: number;
   wandType: string;
+  startingSouls?: number;
+  iframeBonus?: number;
+  pickupRangeBonus?: number;
+  critChanceBonus?: number;
+  fireRateBonus?: number;
+  projectileSpeedBonus?: number;
+  extraLives?: number;
+  eliteSoulBonus?: number;
+  startingRelicChance?: number;
+  soulMeterReduction?: number;
 }): Player {
   const baseWandDamage = 8 + permanentBonuses.wandPowerBonus * 3;
   const baseMaxHp = 100 + permanentBonuses.healthBonus * 20;
@@ -32,9 +42,9 @@ export function createStartingPlayer(permanentBonuses: {
     radius: 14,
 
     wandLevel: 1,
-    fireRate: 2.2,
+    fireRate: 2.2 * (1 + (permanentBonuses.fireRateBonus ?? 0) * 0.05),
     damage: baseWandDamage,
-    projectileSpeed: 480,
+    projectileSpeed: 480 + (permanentBonuses.projectileSpeedBonus ?? 0) * 30,
     projectileCount: 1,
     pierce: 0,
     chainCount: 0,
@@ -49,13 +59,13 @@ export function createStartingPlayer(permanentBonuses: {
     splitterBoltLevel: 0,
     chainLightningLevel: 0,
     frostBoltLevel: 0,
-    critChance: 0,
+    critChance: (permanentBonuses.critChanceBonus ?? 0) * 0.03,
     critMult: 3,
     executeThreshold: 0,
     ricochetLevel: 0,
     minionHpMult: 1,
 
-    soulPickupRange: 80,
+    soulPickupRange: 80 + (permanentBonuses.pickupRangeBonus ?? 0) * 12,
     soulGainMult: 1 + permanentBonuses.soulGainBonus * 0.15,
 
     minionDamage: 6 + permanentBonuses.minionPowerBonus * 2,
@@ -109,7 +119,7 @@ export function createStartingPlayer(permanentBonuses: {
     lichFormCooldown: 0,
 
     soulMeter: 0,
-    soulMeterMax: 50,
+    soulMeterMax: Math.max(20, 50 - (permanentBonuses.soulMeterReduction ?? 0) * 3),
 
     blackHoleLevel: 0,
     blackHoleTimer: 0,
@@ -125,6 +135,23 @@ export function createStartingPlayer(permanentBonuses: {
     comboCount: 0,
     comboTimer: 0,
     comboMax: 0,
+
+    soulResonanceActive: false,
+    frostbiteCurseActive: false,
+    chainReactionActive: false,
+    boneStormSurgeActive: false,
+    vampiricHungerActive: false,
+    soulBatteryOverloadActive: false,
+    graveEchoActive: false,
+    phantomResonanceActive: false,
+    critCascadeActive: false,
+    toxicSynergyActive: false,
+    shatteredBoneActive: false,
+    soulConduitActive: false,
+    bloodlustActive: false,
+    arcaneAmplifierActive: false,
+    temporalEchoActive: false,
+    necroticBloomActive: false,
 
     lastFireTime: 0,
     iframes: 0,
@@ -787,7 +814,7 @@ export const UPGRADES: Upgrade[] = [
     name: 'Execute',
     description: 'Instantly kill enemies below 10% HP (+5% per stack).',
     path: 'wand',
-    rarity: 'epic',
+    rarity: 'rare',
     icon: '⚔',
     requires: (p) => p.executeThreshold < 0.3,
     apply: (p) => {
@@ -830,7 +857,7 @@ export const UPGRADES: Upgrade[] = [
     name: 'Plague Bats',
     description: 'Summon 3 flying bats that swarm enemies.',
     path: 'necromancy',
-    rarity: 'epic',
+    rarity: 'rare',
     icon: '🦇',
     requires: (p) => p.plagueBatsLevel < 3,
     apply: (p) => {
@@ -926,7 +953,7 @@ export const UPGRADES: Upgrade[] = [
     name: 'Black Hole',
     description: 'AUTO: Every 15s, open a singularity that pulls and shreds enemies.',
     path: 'generic',
-    rarity: 'epic',
+    rarity: 'rare',
     icon: '⚫',
     requires: (p) => p.blackHoleLevel < 3,
     apply: (p) => {
@@ -939,7 +966,7 @@ export const UPGRADES: Upgrade[] = [
     name: 'Meteor Strike',
     description: 'AUTO: Every 5s, a meteor crashes on a random enemy.',
     path: 'generic',
-    rarity: 'epic',
+    rarity: 'rare',
     icon: '☄',
     requires: (p) => p.meteorLevel < 3,
     apply: (p) => {
@@ -952,7 +979,7 @@ export const UPGRADES: Upgrade[] = [
     name: 'Time Warp',
     description: 'AUTO: Every 18s, slow ALL enemies for 4s.',
     path: 'generic',
-    rarity: 'epic',
+    rarity: 'rare',
     icon: '⏱',
     requires: (p) => p.timeWarpLevel < 3,
     apply: (p) => {
@@ -965,7 +992,7 @@ export const UPGRADES: Upgrade[] = [
     name: 'Earthquake',
     description: 'AUTO: Every 12s, shockwave damages and knocks back all enemies.',
     path: 'generic',
-    rarity: 'epic',
+    rarity: 'rare',
     icon: '🌐',
     requires: (p) => p.earthquakeLevel < 3,
     apply: (p) => {
@@ -980,7 +1007,7 @@ export const UPGRADES: Upgrade[] = [
     name: 'I AM BLESSED BY GOD',
     description: 'DIVINE: Enemies have a chance to drop golden chests containing RARE+ skills!',
     path: 'generic',
-    rarity: 'epic',
+    rarity: 'rare',
     icon: '✨',
     requires: (p) => p.blessedByGodLevel < 3,
     apply: (p) => {
@@ -1060,6 +1087,228 @@ export const UPGRADES: Upgrade[] = [
     requires: (p) => !p.skills.has('twin_souls'),
     apply: (p) => {
       p.skills.add('twin_souls');
+    },
+  },
+
+  // ===== NEW COMBO SKILLS (epic, one-time-only) — these powers interact with other skills =====
+  {
+    id: 'soul_resonance',
+    name: 'Soul Resonance',
+    description: 'COMBO: If you have 3+ minions, all minions deal +50% damage.',
+    path: 'necromancy',
+    rarity: 'epic',
+    icon: '🎵',
+    requires: (p) =>
+      !p.soulResonanceActive && p.maxMinions >= 4,
+    apply: (p) => {
+      p.soulResonanceActive = true;
+      p.minionDamage *= 1.5;
+      p.skills.add('soul_resonance');
+    },
+  },
+  {
+    id: 'frostbite_curse',
+    name: 'Frostbite Curse',
+    description: 'COMBO: Frost Bolt slows also mark enemies for +50% damage. Requires Frost Bolt.',
+    path: 'wand',
+    rarity: 'epic',
+    icon: '❄',
+    requires: (p) => !p.frostbiteCurseActive && p.frostBoltLevel > 0,
+    apply: (p) => {
+      p.frostbiteCurseActive = true;
+      p.skills.add('frostbite_curse');
+    },
+  },
+  {
+    id: 'chain_reaction',
+    name: 'Chain Reaction',
+    description: 'COMBO: Chain Lightning bounces explode for AoE damage. Requires Chain Lightning.',
+    path: 'wand',
+    rarity: 'epic',
+    icon: '⚡',
+    requires: (p) => !p.chainReactionActive && p.chainLightningLevel > 0,
+    apply: (p) => {
+      p.chainReactionActive = true;
+      p.skills.add('chain_reaction');
+    },
+  },
+  {
+    id: 'bone_storm_surge',
+    name: 'Bone Storm Surge',
+    description: 'COMBO: Bone Storm orbit count doubles while Aura of Decay is active.',
+    path: 'survival',
+    rarity: 'epic',
+    icon: '🌀',
+    requires: (p) =>
+      !p.boneStormSurgeActive &&
+      p.boneStormLevel > 0 &&
+      p.auraOfDecayLevel > 0,
+    apply: (p) => {
+      p.boneStormSurgeActive = true;
+      p.skills.add('bone_storm_surge');
+    },
+  },
+  {
+    id: 'vampiric_hunger',
+    name: 'Vampiric Hunger',
+    description: 'COMBO: Vampiric Aura lifesteal also heals your minions. Requires Vampiric Aura.',
+    path: 'necromancy',
+    rarity: 'epic',
+    icon: '🩸',
+    requires: (p) => !p.vampiricHungerActive && p.vampiricAuraLevel > 0,
+    apply: (p) => {
+      p.vampiricHungerActive = true;
+      p.skills.add('vampiric_hunger');
+    },
+  },
+  {
+    id: 'soul_battery_overload',
+    name: 'Soul Battery Overload',
+    description: 'COMBO: Soul Nova also triggers a meteor storm on all enemies.',
+    path: 'generic',
+    rarity: 'epic',
+    icon: '☄',
+    requires: (p) => !p.soulBatteryOverloadActive && p.skills.has('soul_battery'),
+    apply: (p) => {
+      p.soulBatteryOverloadActive = true;
+      p.skills.add('soul_battery_overload');
+    },
+  },
+  {
+    id: 'grave_echo',
+    name: 'Grave Echo',
+    description: 'COMBO: When a minion dies, 25% chance to cast a mini Grave Call. Requires any minion skill.',
+    path: 'necromancy',
+    rarity: 'epic',
+    icon: '🔊',
+    requires: (p) =>
+      !p.graveEchoActive && p.maxMinions >= 4,
+    apply: (p) => {
+      p.graveEchoActive = true;
+      p.skills.add('grave_echo');
+    },
+  },
+  {
+    id: 'phantom_resonance',
+    name: 'Phantom Resonance',
+    description: 'COMBO: Spirit Walk phases also grant 1s of invulnerability. Requires Spirit Walk.',
+    path: 'survival',
+    rarity: 'epic',
+    icon: '👻',
+    requires: (p) => !p.phantomResonanceActive && p.spiritWalkLevel > 0,
+    apply: (p) => {
+      p.phantomResonanceActive = true;
+      p.skills.add('phantom_resonance');
+    },
+  },
+  {
+    id: 'crit_cascade',
+    name: 'Crit Cascade',
+    description: 'COMBO: Critical hits also fire a chain lightning bolt. Requires Critical Strike + Chain Lightning.',
+    path: 'wand',
+    rarity: 'epic',
+    icon: '✸',
+    requires: (p) =>
+      !p.critCascadeActive &&
+      p.critChance > 0 &&
+      p.chainLightningLevel > 0,
+    apply: (p) => {
+      p.critCascadeActive = true;
+      p.skills.add('crit_cascade');
+    },
+  },
+  {
+    id: 'toxic_synergy',
+    name: 'Toxic Synergy',
+    description: 'COMBO: Marked enemies take 2x damage from DoT effects. Requires Mark of Death + Soul Burn.',
+    path: 'necromancy',
+    rarity: 'epic',
+    icon: '☠',
+    requires: (p) =>
+      !p.toxicSynergyActive &&
+      p.markOfDeathLevel > 0 &&
+      p.dotChance > 0,
+    apply: (p) => {
+      p.toxicSynergyActive = true;
+      p.skills.add('toxic_synergy');
+    },
+  },
+  {
+    id: 'shattered_bone',
+    name: 'Shattered Bone',
+    description: 'COMBO: Bone Walls shatter into damaging shards when they expire. Requires Bone Wall.',
+    path: 'survival',
+    rarity: 'epic',
+    icon: '💀',
+    requires: (p) => !p.shatteredBoneActive && p.boneWallLevel > 0,
+    apply: (p) => {
+      p.shatteredBoneActive = true;
+      p.skills.add('shattered_bone');
+    },
+  },
+  {
+    id: 'soul_conduit',
+    name: 'Soul Conduit',
+    description: 'COMBO: Every 5th soul pickup triggers a mini Soul Nova (small AoE damage).',
+    path: 'generic',
+    rarity: 'epic',
+    icon: '🔮',
+    requires: (p) => !p.soulConduitActive,
+    apply: (p) => {
+      p.soulConduitActive = true;
+      p.skills.add('soul_conduit');
+    },
+  },
+  {
+    id: 'bloodlust',
+    name: 'Bloodlust',
+    description: 'COMBO: Hitting combo milestones (10/25/50/100) enrages minions for 5s (+80% dmg, +30% speed).',
+    path: 'necromancy',
+    rarity: 'epic',
+    icon: '😡',
+    requires: (p) => !p.bloodlustActive && p.maxMinions >= 4,
+    apply: (p) => {
+      p.bloodlustActive = true;
+      p.skills.add('bloodlust');
+    },
+  },
+  {
+    id: 'arcane_amplifier',
+    name: 'Arcane Amplifier',
+    description: 'COMBO: Wand fires 1 extra projectile when Soul Meter is above 75% full.',
+    path: 'wand',
+    rarity: 'epic',
+    icon: '🔆',
+    requires: (p) => !p.arcaneAmplifierActive && p.skills.has('soul_battery'),
+    apply: (p) => {
+      p.arcaneAmplifierActive = true;
+      p.skills.add('arcane_amplifier');
+    },
+  },
+  {
+    id: 'temporal_echo',
+    name: 'Temporal Echo',
+    description: 'COMBO: Time Warp also slows enemy projectiles by 50%. Requires Time Warp.',
+    path: 'generic',
+    rarity: 'epic',
+    icon: '⏳',
+    requires: (p) => !p.temporalEchoActive && p.timeWarpLevel > 0,
+    apply: (p) => {
+      p.temporalEchoActive = true;
+      p.skills.add('temporal_echo');
+    },
+  },
+  {
+    id: 'necrotic_bloom',
+    name: 'Necrotic Bloom',
+    description: 'COMBO: If Necrotic Explosion kills an enemy, it chains to another nearby foe. Requires Necrotic Explosion.',
+    path: 'necromancy',
+    rarity: 'epic',
+    icon: '🌸',
+    requires: (p) => !p.necroticBloomActive && p.necroticExplosionLevel > 0,
+    apply: (p) => {
+      p.necroticBloomActive = true;
+      p.skills.add('necrotic_bloom');
     },
   },
 ];

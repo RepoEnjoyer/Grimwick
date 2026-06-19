@@ -1,5 +1,6 @@
 // Canvas rendering: dark fantasy pixel-art-ish style with glow effects
 import { GameEngine, GAME_W, GAME_H } from './engine';
+import { ELITE_AFFIXES } from './content';
 import type {
   BlackHole,
   BoneWall,
@@ -153,15 +154,22 @@ export function drawGame(engine: GameEngine) {
     drawBoneShield(ctx, engine.player, engine.boneShieldOrbs, t);
   }
 
-  // ===== floating texts =====
+  // ===== floating texts (damage numbers + status text) =====
   for (const ft of engine.floatingTexts) {
     ctx.save();
     ctx.globalAlpha = Math.min(1, ft.life);
     ctx.fillStyle = ft.color;
-    ctx.font = 'bold 16px monospace';
+    const size = ft.size ?? 16;
+    const weight = ft.bold ? '900' : 'bold';
+    ctx.font = `${weight} ${size}px monospace`;
     ctx.textAlign = 'center';
     ctx.shadowColor = '#000';
-    ctx.shadowBlur = 4;
+    ctx.shadowBlur = size > 16 ? 6 : 4;
+    // crit numbers get an extra glow
+    if (size >= 17) {
+      ctx.shadowColor = ft.color;
+      ctx.shadowBlur = 8;
+    }
     ctx.fillText(ft.text, ft.x, ft.y);
     ctx.restore();
   }
@@ -579,6 +587,50 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, t: number) {
   ctx.save();
   ctx.translate(e.x, e.y);
 
+  // ===== ELITE AURA — colored pulsing ring + glow =====
+  if (e.isElite && e.eliteAffixes.length > 0) {
+    const auraColor = ELITE_AFFIXES[e.eliteAffixes[0]].color;
+    const pulse = 1 + Math.sin(t * 4) * 0.08;
+    // outer pulsing aura ring
+    ctx.strokeStyle = auraColor;
+    ctx.lineWidth = 2;
+    ctx.globalAlpha = 0.7;
+    ctx.beginPath();
+    ctx.arc(0, 0, e.radius * 1.6 * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 0.3;
+    ctx.beginPath();
+    ctx.arc(0, 0, e.radius * 1.9 * pulse, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    // glow underlay
+    glowCircle(ctx, 0, 0, e.radius * 1.2, auraColor, 16);
+    // affix icons floating above enemy
+    ctx.font = 'bold 8px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = auraColor;
+    const affixLabel = e.eliteAffixes
+      .map((a) => ELITE_AFFIXES[a].name[0])
+      .join('');
+    ctx.fillText(affixLabel, 0, -e.radius - 8);
+    // shielded bubble indicator
+    if (e.eliteAffixes.includes('shielded') && e.eliteShieldHp > 0) {
+      ctx.strokeStyle = '#7ad3ff';
+      ctx.lineWidth = 1.5;
+      ctx.globalAlpha = 0.6;
+      ctx.beginPath();
+      ctx.arc(0, 0, e.radius * 1.3, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+    // enraged indicator (vengeful)
+    if (e.enraged) {
+      ctx.fillStyle = '#ffd34d';
+      ctx.font = 'bold 9px monospace';
+      ctx.fillText('!!!', 0, -e.radius - 18);
+    }
+  }
+
   // hit flash
   const flash = e.hitFlash > 0;
 
@@ -911,6 +963,79 @@ function drawBossExtras(
   } else if (e.bossKind === 'twins') {
     // lantern
     glowCircle(ctx, 12, 6, 5, '#a8ff80', 14);
+  } else if (e.bossKind === 'wraith_queen') {
+    // Wraith Queen — flowing tattered cloak, glowing purple crown
+    ctx.save();
+    ctx.globalAlpha = 0.85;
+    // flowing cloak (animated wisp)
+    ctx.fillStyle = '#5a3a8a';
+    ctx.beginPath();
+    const wave = Math.sin(t * 3) * 4;
+    ctx.moveTo(-e.radius * 0.9, -e.radius * 0.4);
+    ctx.quadraticCurveTo(-e.radius * 1.4 + wave, 0, -e.radius, e.radius);
+    ctx.quadraticCurveTo(0, e.radius * 1.3, e.radius, e.radius);
+    ctx.quadraticCurveTo(e.radius * 1.4 - wave, 0, e.radius * 0.9, -e.radius * 0.4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // crown — jagged purple spikes
+    ctx.fillStyle = '#c4a0ff';
+    for (let i = 0; i < 5; i++) {
+      const ang = -Math.PI + (i / 4) * Math.PI;
+      const cx = Math.cos(ang) * (e.radius + 4);
+      const cy = Math.sin(ang) * (e.radius + 4) - e.radius * 0.3;
+      ctx.beginPath();
+      ctx.moveTo(cx - 3, cy + 6);
+      ctx.lineTo(cx, cy - 6);
+      ctx.lineTo(cx + 3, cy + 6);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+    // glowing eyes
+    glowCircle(ctx, -5, -e.radius + 10, 2.5, '#ff40ff', 10);
+    glowCircle(ctx, 5, -e.radius + 10, 2.5, '#ff40ff', 10);
+    // floating soul orbs orbiting
+    for (let i = 0; i < 4; i++) {
+      const ang = t * 2 + (i / 4) * Math.PI * 2;
+      const ox = Math.cos(ang) * (e.radius + 18);
+      const oy = Math.sin(ang) * (e.radius + 18);
+      glowCircle(ctx, ox, oy, 3, '#c4a0ff', 12);
+    }
+  } else if (e.bossKind === 'bone_colossus') {
+    // Bone Colossus — massive bone construct with ribcage and skull head
+    ctx.save();
+    // ribcage
+    ctx.strokeStyle = '#e0d8c0';
+    ctx.lineWidth = 3;
+    for (let i = 0; i < 4; i++) {
+      const y = -e.radius * 0.4 + i * (e.radius * 0.25);
+      ctx.beginPath();
+      ctx.arc(0, y, e.radius * 0.7, Math.PI * 0.1, Math.PI * 0.9);
+      ctx.stroke();
+    }
+    // spine
+    ctx.fillStyle = '#e0d8c0';
+    ctx.fillRect(-3, -e.radius * 0.6, 6, e.radius * 1.2);
+    // shoulder bones
+    ctx.fillRect(-e.radius, -e.radius * 0.5, e.radius * 2, 6);
+    // huge skull head
+    ctx.fillStyle = '#f0e8d0';
+    ctx.beginPath();
+    ctx.arc(0, -e.radius - 6, e.radius * 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    // eye sockets (glowing red)
+    ctx.fillStyle = '#000';
+    ctx.fillRect(-8, -e.radius - 10, 5, 5);
+    ctx.fillRect(3, -e.radius - 10, 5, 5);
+    glowCircle(ctx, -5, -e.radius - 7, 2.5, '#ff2020', 12);
+    glowCircle(ctx, 5, -e.radius - 7, 2.5, '#ff2020', 12);
+    // teeth
+    ctx.fillStyle = '#fff';
+    for (let i = 0; i < 5; i++) {
+      ctx.fillRect(-10 + i * 5, -e.radius + 2, 3, 4);
+    }
+    ctx.restore();
   }
 }
 

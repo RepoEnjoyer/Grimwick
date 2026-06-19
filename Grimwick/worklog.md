@@ -312,3 +312,141 @@ Stage Summary:
 - Death Ray: 25s cooldown as described
 - Critical Strike: 3x damage as described
 - TypeScript: clean, Lint: clean, no runtime errors
+
+---
+Task ID: 5
+Agent: main (super-z)
+Task: Add epic skill uniqueness (once per skill), more unique combo skills, more permanent upgrade variations. Also includes prior in-progress work: elite affixes, damage numbers, combo system, 2 new bosses.
+
+Work Log:
+- Updated types.ts:
+  - Added 2 new boss kinds: wraith_queen, bone_colossus
+  - Added EliteAffix type (10 affixes: swift, colossal, volatile, vampiric, splitter, resurrective, ethereal, vengeful, toxic, shielded)
+  - Added elite fields to Enemy: isElite, eliteAffixes, eliteShieldHp/Max/RegenTimer, resurrectedOnce, poisonTrailTimer, enraged, baseSpeed, baseDamage
+  - Added combo fields to Player: comboCount, comboTimer, comboMax
+  - Added 16 combo skill flags to Player: soulResonanceActive, frostbiteCurseActive, chainReactionActive, boneStormSurgeActive, vampiricHungerActive, soulBatteryOverloadActive, graveEchoActive, phantomResonanceActive, critCascadeActive, toxicSynergyActive, shatteredBoneActive, soulConduitActive, bloodlustActive, arcaneAmplifierActive, temporalEchoActive, necroticBloomActive
+  - Added size/bold fields to FloatingText for damage numbers
+  - Added maxHp field to Minion
+  - Added 10 new permanent upgrade fields to PermanentProgress.upgrades: startingSouls, iframeDuration, pickupRange, critChance, fireRate, projectileSpeed, extraLife, eliteSoulBonus, startingRelic, soulMeterSize
+  - Added comboCount, comboTimer, comboMax, elitesKilled to HudSnapshot
+- Updated content.ts:
+  - Added ELITE_AFFIXES data table (10 affixes with stat multipliers and weights)
+  - Added rollEliteAffixes() function (weighted random selection)
+  - Added 2 new boss templates: wraith_queen (1100 HP, fast circling), bone_colossus (2400 HP, tanky)
+  - Updated BOSS_ROOM_SCHEDULE to include wraith_queen at room 6 and bone_colossus at room 14
+  - Downgraded 7 stackable epic upgrades to rare rarity (Execute, Plague Bats, Black Hole, Meteor Strike, Time Warp, Earthquake, Blessed by God) — they now properly stack as rare while keeping epics truly unique
+  - Added 16 NEW COMBO SKILLS as epic (all one-time-only):
+    * soul_resonance: minions +50% dmg if 3+ minions (requires maxMinions >= 4)
+    * frostbite_curse: frost slows also mark enemies (requires Frost Bolt)
+    * chain_reaction: chain lightning bounces explode for AoE (requires Chain Lightning)
+    * bone_storm_surge: bone storm doubles if Aura of Decay active (requires both)
+    * vampiric_hunger: vampiric aura also heals minions (requires Vampiric Aura)
+    * soul_battery_overload: soul nova triggers meteor storm (requires Soul Battery)
+    * grave_echo: minion death 25% chance → mini grave call (requires maxMinions >= 4)
+    * phantom_resonance: spirit walk phases grant 1s iframes (requires Spirit Walk)
+    * crit_cascade: crits fire chain lightning bolt (requires Critical Strike + Chain Lightning)
+    * toxic_synergy: marked enemies take 2x DoT (requires Mark of Death + Soul Burn)
+    * shattered_bone: bone walls shatter into shards on expire (requires Bone Wall)
+    * soul_conduit: every 5th soul pickup → mini soul nova
+    * bloodlust: combo milestones enrage minions for 5s (requires maxMinions >= 4)
+    * arcane_amplifier: wand fires extra projectile when soul meter > 75% (requires Soul Battery)
+    * temporal_echo: time warp also slows enemy projectiles (requires Time Warp)
+    * necrotic_bloom: necrotic explosion chains on kill (requires Necrotic Explosion)
+  - Updated createStartingPlayer to apply all new permanent bonuses (crit chance, fire rate, projectile speed, soul pickup range, soul meter size)
+- Updated persistence.ts:
+  - Added 10 new permanent upgrade definitions (Soul Hoard, Phantom Reflex, Soul Magnetism, Deadly Eye, Quick Cast, Swift Bolt, Undying Vow, Trophy Hunter, Heirloom, Soul Compression)
+  - Updated defaultProgress to include all new fields
+- Updated engine.ts:
+  - Added elite spawn logic in spawnEnemyAt: chance scales with room depth (4% + 1%/room, cap 12%), force-spawn every 12 enemies, 2 affixes at room 8+
+  - Added elite affix stat multipliers (HP, damage, speed, size, soul value)
+  - Added elite spawn dramatic visual effect (magic particles + "ELITE!" floating text)
+  - Updated damageEnemy to handle:
+    * ethereal (30% phase chance)
+    * shielded (regenerating damage shield absorbs hits)
+    * vampiric (heals on hit — handled in damagePlayer)
+    * vengeful (enrage at 30% HP: +50% speed, +30% dmg)
+    * toxic (DoT on hit)
+  - Added spawnDamageNumber helper for damage text with size/bold/color
+  - Updated damageEnemy to emit damage numbers for all damage events (color-coded: crit=gold, frost=blue, lightning=yellow, DoT=purple, marked=red)
+  - Updated killEnemy to handle:
+    * resurrective (revive once at 50% HP)
+    * splitter (spawn 2 smaller non-elite children)
+    * volatile (AoE explosion damaging player + chain reaction to other enemies)
+  - Added combo system: comboCount++, comboTimer=3s, milestones at 10/25/50/100/200 with bonus heal + visual
+  - Added elite kill tracking (elitesKilled counter, +25% souls per Trophy Hunter level)
+  - Updated updateEnemies to tick DoT (with Toxic Synergy 2x bonus on marked)
+  - Updated updatePlayer to tick combo timer and bloodlust timer
+  - Added combo milestone Bloodlust trigger: enrage minions for 5s (+80% dmg in minion attacks)
+  - Added castMiniGraveCall method for Grave Echo combo
+  - Updated triggerSoulNova to trigger meteor storm if Soul Battery Overload active
+  - Updated updateSouls to trigger mini Soul Nova every 5th pickup if Soul Conduit active
+  - Updated fireWand to add extra projectile if Arcane Amplifier active and soul meter > 75%
+  - Updated projectile hit logic to apply:
+    * Frostbite Curse (frost also marks enemies)
+    * Chain Reaction (chain lightning bounces explode for AoE)
+    * Crit Cascade (crits fire chain lightning bolt)
+  - Updated damagePlayer to apply Phantom Resonance (1s iframes after phase)
+  - Updated necrotic explosion to chain if kills enemy (Necrotic Bloom)
+  - Updated vampiric aura to also heal nearby minions if Vampiric Hunger active
+  - Added new boss AI:
+    * Wraith Queen: fast circling, banshee screams (3-way sonic projectiles), special = teleport + summon ghost adds
+    * Bone Colossus: slow approach, stomp AoE shockwaves, summons bonebeast adds, heals 5% HP, enrages at 30% HP
+  - Updated spawnEnemyAt to add new elite fields (isElite, eliteAffixes, etc.)
+  - Updated spawnBoss to add new elite fields
+  - Updated spawnMinion to add maxHp field (for Vampiric Hunger healing)
+  - Updated permanentBonuses interface with 10 new fields
+  - Updated startRun to apply: starting souls, extra lives, starting relic chance (Heirloom)
+  - Updated handleDeath to use extra lives (revive at 50% HP, clear nearby enemies)
+  - Updated damagePlayer iframe duration to use Phantom Reflex bonus
+  - Updated offerUpgradeChoices, openGoldenChest, rerollChoices to filter out epic upgrades player already has (epic = one-time-only per skill)
+  - Updated emitHud to include comboCount, comboTimer, comboMax, elitesKilled
+- Updated render.ts:
+  - Imported ELITE_AFFIXES from content
+  - Added elite aura drawing: pulsing colored ring, glow underlay, affix icons floating above enemy, shielded bubble indicator, enraged "!!!" indicator
+  - Updated floating text rendering to support size/bold (damage numbers), with extra glow for crit-sized numbers
+  - Added Wraith Queen boss visuals: flowing animated cloak, jagged purple crown, glowing pink eyes, 4 orbiting soul orbs
+  - Added Bone Colossus boss visuals: ribcage, spine, shoulder bones, huge skull head with red glowing eye sockets and teeth
+- Updated GameCanvas.tsx:
+  - Added buildBonuses helper function to convert PermanentProgress → permanentBonuses
+  - Updated engine init to pass all 10 new permanent bonuses
+  - Updated startNewRun to use buildBonuses helper
+- Updated HUD.tsx:
+  - Added 16 new combo skill names to SKILL_NAMES map
+  - Added Elites count indicator next to Kills count (when > 0)
+  - Added Combo Counter display (top center, below boss bar): large colored number with combo timer bar
+    * Color escalates: white (3+) → orange (10+) → gold (25+) → magenta (50+)
+    * Number scales up at combo 10+
+- Updated PauseMenu.tsx:
+  - Added 16 new combo skill names to SKILL_NAMES map
+- Updated StartScreen.tsx:
+  - Added combo and elite hints to the "Auto Systems" info panel
+- Updated CryptHub.tsx:
+  - Updated handleBuy type to accept all 16 upgrade IDs (keyof PermanentProgress['upgrades'])
+  - Updated upgrade grid type cast to use keyof
+- Tested via Agent Browser:
+  - Game starts with all permanent bonuses correctly applied (HP 140, souls 15, crit 6%, fire rate 2.31, projectile speed 510, soul meter 47, pickup range 92, extra lives 1)
+  - Heirloom relic chance: 2/10 runs granted starting relic (Black Candle, Wand of the Grave King)
+  - Elite enemies spawn correctly at room 5+ (3/20 spawned with affixes toxic, toxic, volatile)
+  - Combo system tracks kills (combo=5 after 5 kills, comboMax=5)
+  - Epic uniqueness verified: wraith never appears again after being acquired (100 attempts, 0 found)
+  - Soul Resonance applies +50% minion damage (6 → 9)
+  - Wraith Queen boss spawns at room 6 with 1100 HP
+  - Bone Colossus boss spawns at room 14 with 2400 HP
+  - Pause menu shows new combo skills
+  - Combat works: 3 kills, 1 elite slain, 4 floating texts (2 damage numbers), no console errors
+  - TypeScript: clean, ESLint: clean
+
+Stage Summary:
+- EPIC UNIQUENESS: All epic skills are now one-time-only per run (filter applied to offerUpgradeChoices, openGoldenChest, rerollChoices). Verified via 100-attempt test.
+- 16 NEW COMBO SKILLS (epic, one-time-only): each requires and synergizes with other skills:
+  * Wand combos: Frostbite Curse, Chain Reaction, Crit Cascade, Arcane Amplifier
+  * Necromancy combos: Soul Resonance, Vampiric Hunger, Grave Echo, Bloodlust, Necrotic Bloom
+  * Survival combos: Bone Storm Surge, Phantom Resonance, Shattered Bone
+  * Generic combos: Soul Battery Overload, Soul Conduit, Temporal Echo
+  * Toxic Synergy: cross-tree (Mark of Death + Soul Burn)
+- 10 NEW PERMANENT UPGRADES in Crypt Hub (16 total): Soul Hoard, Phantom Reflex, Soul Magnetism, Deadly Eye, Quick Cast, Swift Bolt, Undying Vow (3 revives), Trophy Hunter, Heirloom (relic chance), Soul Compression
+- ELITE ENEMY SYSTEM: 10 affixes (swift, colossal, volatile, vampiric, splitter, resurrective, ethereal, vengeful, toxic, shielded), spawn rate scales with room depth, force-spawn every 12 enemies, 2 affixes at room 8+, elites drop bonus souls and heal
+- DAMAGE NUMBERS: Color-coded floating combat text for all damage events (crit=gold/large, frost=blue, lightning=yellow, DoT=purple, marked=red, shield=blue)
+- COMBO SYSTEM: Chain kills for combo bonuses at 10/25/50/100/200 milestones (bonus heal soul, visual feedback, Bloodlust enrage if unlocked)
+- 2 NEW BOSSES: Wraith Queen (room 6, fast circling + teleport + ghost summons), Bone Colossus (room 14, slow tank + stomp + bonebeast summons + enrage)
+- All systems verified end-to-end via Agent Browser, no errors

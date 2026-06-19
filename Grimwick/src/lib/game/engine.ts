@@ -131,6 +131,8 @@ export class GameEngine {
   // NEW elite/combo tracking
   elitesKilled = 0;
   eliteSpawnCounter = 0; // increments per spawn; elites every N spawns
+  soulConduitCounter = 0; // counts soul pickups for Soul Conduit combo
+  bloodlustTimer = 0; // Bloodlust combo: enraged minions timer
 
   permanentBonuses: {
     healthBonus: number;
@@ -140,7 +142,20 @@ export class GameEngine {
     moveSpeedBonus: number;
     relicLuck: number;
     wandType: string;
+    // NEW bonuses
+    startingSouls: number;
+    iframeBonus: number;
+    pickupRangeBonus: number;
+    critChanceBonus: number;
+    fireRateBonus: number;
+    projectileSpeedBonus: number;
+    extraLives: number;
+    eliteSoulBonus: number;
+    startingRelicChance: number;
+    soulMeterReduction: number;
   };
+
+  extraLivesRemaining = 0; // runtime counter for extra lives
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -153,6 +168,16 @@ export class GameEngine {
       moveSpeedBonus: number;
       relicLuck: number;
       wandType: string;
+      startingSouls: number;
+      iframeBonus: number;
+      pickupRangeBonus: number;
+      critChanceBonus: number;
+      fireRateBonus: number;
+      projectileSpeedBonus: number;
+      extraLives: number;
+      eliteSoulBonus: number;
+      startingRelicChance: number;
+      soulMeterReduction: number;
     }
   ) {
     this.canvas = canvas;
@@ -169,6 +194,10 @@ export class GameEngine {
     this.player = createStartingPlayer(this.permanentBonuses);
     this.player.x = GAME_W / 2;
     this.player.y = GAME_H / 2;
+    // Apply starting souls bonus
+    this.player.soulsCollected = (this.permanentBonuses.startingSouls ?? 0) * 15;
+    // Apply extra lives
+    this.extraLivesRemaining = this.permanentBonuses.extraLives ?? 0;
     this.enemies = [];
     this.projectiles = [];
     this.enemyProjectiles = [];
@@ -178,6 +207,16 @@ export class GameEngine {
     this.cursedGrounds = [];
     this.floatingTexts = [];
     this.relics = [];
+    // Apply starting relic chance (Heirloom permanent upgrade) — AFTER relics reset
+    const relicChance = (this.permanentBonuses.startingRelicChance ?? 0) * 0.2;
+    if (Math.random() < relicChance) {
+      const pool = RELICS.filter((r) => !this.relics.find((x) => x.id === r.id));
+      if (pool.length > 0) {
+        const r = pool[Math.floor(Math.random() * pool.length)];
+        this.relics.push(r);
+        r.apply(this.player);
+      }
+    }
     this.pendingSpawns = [];
     this.blackHoles = [];
     this.boneWalls = [];
@@ -199,6 +238,8 @@ export class GameEngine {
     this.shotCounter = 0;
     this.elitesKilled = 0;
     this.eliteSpawnCounter = 0;
+    this.soulConduitCounter = 0;
+    this.bloodlustTimer = 0;
     this.setPhase('playing');
     this.startNextRoom();
     this.emitHud();
@@ -349,6 +390,21 @@ export class GameEngine {
     if (p.iframes > 0) p.iframes -= dt;
     if (p.dashTimer > 0) p.dashTimer -= dt;
     if (p.dashCooldownTimer > 0) p.dashCooldownTimer -= dt;
+
+    // combo timer countdown
+    if (p.comboTimer > 0) {
+      p.comboTimer -= dt;
+      if (p.comboTimer <= 0) {
+        // combo expired — show summary if meaningful
+        if (p.comboCount >= 5) {
+          this.spawnFloatingText(p.x, p.y - 40, `Combo ended: ${p.comboCount}x`, '#a0a0a0');
+        }
+        p.comboCount = 0;
+        p.comboTimer = 0;
+      }
+    }
+    // bloodlust timer countdown
+    if (this.bloodlustTimer > 0) this.bloodlustTimer -= dt;
 
     // ultimates countdown
     if (p.armyOfDeadTimer > 0) p.armyOfDeadTimer -= dt;
@@ -668,6 +724,18 @@ export class GameEngine {
     this.spawnParticles(p.x, p.y, 20, '#c8c0a8', 'bone', 0.6);
   }
 
+  // COMBO: Grave Echo — mini grave call (1 skeleton at location)
+  castMiniGraveCall(x: number, y: number) {
+    if (
+      this.minions.filter((m) => m.kind === 'skeleton' || m.kind === 'crawler').length <
+      this.player.maxMinions
+    ) {
+      this.spawnMinion('skeleton', x, y, this.player.minionDuration * 0.6);
+      this.spawnParticles(x, y, 8, '#c8c0a8', 'bone', 0.4);
+      this.spawnFloatingText(x, y - 20, 'ECHO!', '#b58cff');
+    }
+  }
+
   castArmyOfDead() {
     const p = this.player;
     p.armyOfDeadTimer = 8;
@@ -749,6 +817,27 @@ export class GameEngine {
         }
         this.spawnFloatingText(p.x, p.y - 40, 'TWIN SOULS!', '#ff80ff');
       }, 300);
+    }
+    // COMBO: Soul Battery Overload — also trigger meteor storm on all enemies
+    if (p.soulBatteryOverloadActive) {
+      const meteorCount = Math.min(8, Math.max(3, Math.floor(this.enemies.length / 2)));
+      const targets = [...this.enemies]
+        .sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y))
+        .slice(0, meteorCount);
+      for (const t of targets) {
+        this.meteors.push({
+          x: t.x,
+          y: t.y - 400,
+          targetX: t.x,
+          targetY: t.y,
+          startY: t.y - 400,
+          damage: p.damage * 4,
+          radius: 60,
+          life: 0.5,
+          exploded: false,
+        });
+      }
+      this.spawnFloatingText(p.x, p.y - 60, 'METEOR STORM!', '#ff8040');
     }
   }
 
@@ -890,10 +979,15 @@ export class GameEngine {
 
     for (let b = 0; b < burstCount; b++) {
       const burstOffset = (b - (burstCount - 1) / 2) * 0.08;
-      for (let i = 0; i < p.projectileCount; i++) {
+      // COMBO: Arcane Amplifier — extra projectile when soul meter > 75%
+      let projCount = p.projectileCount;
+      if (p.arcaneAmplifierActive && p.soulMeter >= p.soulMeterMax * 0.75) {
+        projCount += 1;
+      }
+      for (let i = 0; i < projCount; i++) {
         const spread =
-          p.projectileCount > 1
-            ? (i - (p.projectileCount - 1) / 2) * p.projectileSpread
+          projCount > 1
+            ? (i - (projCount - 1) / 2) * p.projectileSpread
             : 0;
         const a = angle + spread + burstOffset;
         const speed = p.projectileSpeed;
@@ -1140,6 +1234,11 @@ export class GameEngine {
             if (Math.random() < 0.3) {
               this.spawnParticles(e.x, e.y, 1, '#a0d8ff', 'frost', 0.3);
             }
+            // COMBO: Frostbite Curse — frost also marks enemies
+            if (this.player.frostbiteCurseActive && e.markedTimer <= 0) {
+              e.markedTimer = 3;
+              this.spawnParticles(e.x, e.y, 5, '#7ad3ff', 'magic', 0.3);
+            }
           }
           // NEW: chain lightning — arc to nearby enemies
           if (pr.chainLightningLevel && pr.chainLightningLevel > 0) {
@@ -1162,6 +1261,17 @@ export class GameEngine {
                 color: '#a0e0ff',
               });
               this.damageEnemy(next, pr.damage * 0.6, null);
+              // COMBO: Chain Reaction — each bounce explodes for AoE
+              if (this.player.chainReactionActive) {
+                this.spawnParticles(next.x, next.y, 8, '#ffe070', 'spark', 0.3);
+                for (const expl of this.enemies) {
+                  if (arcHit.has(expl.id)) continue;
+                  const ed = Math.hypot(expl.x - next.x, expl.y - next.y);
+                  if (ed < 60) {
+                    this.damageEnemy(expl, pr.damage * 0.3, null);
+                  }
+                }
+              }
               lastX = next.x;
               lastY = next.y;
             }
@@ -1170,6 +1280,22 @@ export class GameEngine {
           if (pr.isCrit) {
             this.spawnFloatingText(e.x, e.y - 20, 'CRIT!', '#ffd040');
             this.spawnParticles(e.x, e.y, 8, '#ffd040', 'spark', 0.4);
+            // COMBO: Crit Cascade — crits also fire a chain lightning bolt
+            if (this.player.critCascadeActive) {
+              const target = this.findNearestEnemy(e.x, e.y, 200, new Set([e.id]));
+              if (target) {
+                this.lightningArcs.push({
+                  x1: e.x,
+                  y1: e.y,
+                  x2: target.x,
+                  y2: target.y,
+                  life: 0.2,
+                  maxLife: 0.2,
+                  color: '#ffe070',
+                });
+                this.damageEnemy(target, pr.damage * 0.8, null);
+              }
+            }
           }
           // NEW: execute — instant-kill low HP enemies
           if (
@@ -1279,7 +1405,12 @@ export class GameEngine {
       if (e.hitFlash > 0) e.hitFlash -= dt;
       if (e.dotTimer > 0) {
         e.dotTimer -= dt;
-        e.hp -= e.dotDamage * dt;
+        // COMBO: Toxic Synergy — marked enemies take 2x DoT damage
+        let dotDmg = e.dotDamage;
+        if (this.player.toxicSynergyActive && e.markedTimer > 0) {
+          dotDmg *= 2;
+        }
+        e.hp -= dotDmg * dt;
         if (Math.random() < 0.06) {
           this.spawnParticles(e.x, e.y, 1, '#7affa0', 'spark', 0.2);
         }
@@ -1678,6 +1809,112 @@ export class GameEngine {
         }
         break;
       }
+      case 'wraith_queen': {
+        // Wraith Queen — fast circling, banshee screams, summons wisp adds
+        if (dist > 220) {
+          e.vx = Math.cos(ang) * e.speed;
+          e.vy = Math.sin(ang) * e.speed;
+        } else {
+          // fast circle around player
+          e.vx = Math.cos(ang + Math.PI / 2) * e.speed;
+          e.vy = Math.sin(ang + Math.PI / 2) * e.speed;
+        }
+        // banshee scream — 3-way sonic projectile
+        if (e.bossAttackTimer <= 0) {
+          e.bossAttackTimer = 1.2;
+          for (let i = -1; i <= 1; i++) {
+            const a = ang + i * 0.4;
+            this.spawnEnemyProjectile({
+              x: e.x,
+              y: e.y,
+              vx: Math.cos(a) * 280,
+              vy: Math.sin(a) * 280,
+              damage: e.damage * 0.7,
+              kind: 'sunbeam',
+              color: '#c4a0ff',
+              radius: 8,
+            });
+          }
+        }
+        // special: teleport + summon wisp adds
+        if (e.bossSpecialTimer <= 0) {
+          e.bossSpecialTimer = 6;
+          // teleport near player (offset)
+          const tpAng = Math.random() * Math.PI * 2;
+          e.x = p.x + Math.cos(tpAng) * 250;
+          e.y = p.y + Math.sin(tpAng) * 250;
+          e.x = Math.max(50, Math.min(GAME_W - 50, e.x));
+          e.y = Math.max(50, Math.min(GAME_H - 50, e.y));
+          this.spawnParticles(e.x, e.y, 20, '#c4a0ff', 'magic', 0.6);
+          this.spawnFloatingText(e.x, e.y - 30, 'TELEPORT!', '#c4a0ff');
+          // summon 3 ghost adds
+          for (let i = 0; i < 3; i++) {
+            this.queueSpawn(
+              e.x + (Math.random() - 0.5) * 60,
+              e.y + (Math.random() - 0.5) * 60,
+              'ghost'
+            );
+          }
+        }
+        break;
+      }
+      case 'bone_colossus': {
+        // Bone Colossus — slow tanky approach, stomps and bone shards
+        e.vx = Math.cos(ang) * e.speed;
+        e.vy = Math.sin(ang) * e.speed;
+        // stomp: AoE shockwave
+        if (e.bossAttackTimer <= 0) {
+          e.bossAttackTimer = 2.5;
+          // ring of bone shards
+          for (let i = 0; i < 16; i++) {
+            const a = (i / 16) * Math.PI * 2;
+            this.spawnEnemyProjectile({
+              x: e.x,
+              y: e.y,
+              vx: Math.cos(a) * 200,
+              vy: Math.sin(a) * 200,
+              damage: e.damage * 0.5,
+              kind: 'knife',
+              color: '#e0d8c0',
+              radius: 6,
+            });
+          }
+          // knockback player if close
+          if (dist < 200) {
+            const kb = 80;
+            p.vx += Math.cos(ang) * kb * -1;
+            p.vy += Math.sin(ang) * kb * -1;
+            this.damagePlayer(e.damage * 0.5, e);
+          }
+          this.spawnParticles(e.x, e.y, 30, '#e0d8c0', 'spark', 0.6);
+        }
+        // special: summon bonebeast adds + heal slightly
+        if (e.bossSpecialTimer <= 0) {
+          e.bossSpecialTimer = 9;
+          // summon 2 bonebeasts
+          for (let i = 0; i < 2; i++) {
+            this.queueSpawn(
+              e.x + (Math.random() - 0.5) * 80,
+              e.y + (Math.random() - 0.5) * 80,
+              'bonebeast'
+            );
+          }
+          // heal 5% HP
+          const heal = e.maxHp * 0.05;
+          e.hp = Math.min(e.maxHp, e.hp + heal);
+          this.spawnFloatingText(e.x, e.y - 40, `+${Math.round(heal)}`, '#7affa0');
+          this.spawnParticles(e.x, e.y, 14, '#7affa0', 'magic', 0.6);
+        }
+        // enrage at low HP (phase 2)
+        if (e.hp < e.maxHp * 0.3 && (e.bossPhase ?? 1) < 2) {
+          e.bossPhase = 2;
+          e.speed = e.baseSpeed * 1.6;
+          e.damage = e.baseDamage * 1.3;
+          this.spawnFloatingText(e.x, e.y - 60, 'ENRAGED!', '#ff4040');
+          this.spawnParticles(e.x, e.y, 30, '#ff4040', 'magic', 0.8);
+        }
+        break;
+      }
     }
   }
 
@@ -1707,6 +1944,10 @@ export class GameEngine {
           // Volatile Bones: explode on death
           if (p.volatileBonesLevel > 0) {
             this.volatileExplosion(m.x, m.y, m.damage * 2 * p.volatileBonesLevel);
+          }
+          // COMBO: Grave Echo — 25% chance to cast mini grave call on minion death
+          if (p.graveEchoActive && Math.random() < 0.25) {
+            this.castMiniGraveCall(m.x, m.y);
           }
           this.minions.splice(i, 1);
           continue;
@@ -1757,13 +1998,30 @@ export class GameEngine {
             const d = Math.hypot(e.x - m.x, e.y - m.y);
             if (d < e.radius + m.radius) {
               if (m.attackCooldown <= 0) {
-                this.damageEnemy(e, m.damage, null);
+                // COMBO: Bloodlust — enraged minions deal +80% damage
+                let dmg = m.damage;
+                const kindAny = m.kind as string;
+                if (kindAny !== 'golem' && kindAny !== 'bat' && this.bloodlustTimer > 0) {
+                  dmg *= 1.8;
+                }
+                this.damageEnemy(e, dmg, null);
                 // vampiric aura
                 if (p.vampiricAuraLevel > 0) {
                   p.hp = Math.min(
                     p.maxHp,
                     p.hp + m.damage * 0.1 * p.vampiricAuraLevel
                   );
+                  // COMBO: Vampiric Hunger — also heal minions
+                  if (p.vampiricHungerActive) {
+                    const healAmt = m.damage * 0.05 * p.vampiricAuraLevel;
+                    for (const om of this.minions) {
+                      if (om === m) continue;
+                      const md = Math.hypot(om.x - m.x, om.y - m.y);
+                      if (md < 120) {
+                        om.hp = Math.min(om.maxHp, om.hp + healAmt);
+                      }
+                    }
+                  }
                 }
               }
             }
@@ -2032,6 +2290,7 @@ export class GameEngine {
       vx: 0,
       vy: 0,
       hp: Math.round(hp * p.minionHpMult),
+      maxHp: Math.round(hp * p.minionHpMult),
       damage: dmg,
       speed,
       radius,
@@ -2082,6 +2341,34 @@ export class GameEngine {
           p.soulsCollected += gain;
           // Charge soul meter
           p.soulMeter = Math.min(p.soulMeterMax, p.soulMeter + 1);
+          // COMBO: Soul Conduit — every 5th soul pickup triggers mini nova
+          if (p.soulConduitActive) {
+            this.soulConduitCounter = (this.soulConduitCounter ?? 0) + 1;
+            if (this.soulConduitCounter >= 5) {
+              this.soulConduitCounter = 0;
+              const miniDmg = p.damage * 1.5;
+              for (const e of this.enemies) {
+                const ed = Math.hypot(e.x - p.x, e.y - p.y);
+                if (ed < 150) {
+                  this.damageEnemy(e, miniDmg, null);
+                }
+              }
+              for (let k = 0; k < 20; k++) {
+                const a = (k / 20) * Math.PI * 2;
+                this.particles.push({
+                  x: p.x,
+                  y: p.y,
+                  vx: Math.cos(a) * 250,
+                  vy: Math.sin(a) * 250,
+                  life: 0.4,
+                  maxLife: 0.4,
+                  radius: 3,
+                  color: '#b58cff',
+                  kind: 'soul',
+                });
+              }
+            }
+          }
         }
         this.souls.splice(i, 1);
       }
@@ -2638,9 +2925,148 @@ export class GameEngine {
   }
 
   killEnemy(e: Enemy, idx: number) {
+    // ===== ELITE: resurrective — revive once at 50% HP =====
+    if (e.isElite && e.eliteAffixes.includes('resurrective') && !e.resurrectedOnce && !e.isBoss) {
+      e.resurrectedOnce = true;
+      e.hp = e.maxHp * 0.5;
+      // Don't actually remove from enemies array
+      this.spawnFloatingText(e.x, e.y - 40, 'RESURRECTED!', '#c08aff');
+      this.spawnParticles(e.x, e.y, 20, '#c08aff', 'magic', 0.8);
+      this.spawnParticles(e.x, e.y, 12, '#ffffff', 'spark', 0.6);
+      e.hitFlash = 0.3;
+      return;
+    }
+
+    // ===== ELITE: splitter — spawn 2 smaller versions on death =====
+    if (e.isElite && e.eliteAffixes.includes('splitter') && !e.isBoss && e.radius > 12) {
+      for (let i = 0; i < 2; i++) {
+        const ang = (i / 2) * Math.PI * 2 + Math.random() * 0.5;
+        const offset = 24;
+        const child = { ...e };
+        child.id = this.nextEnemyId++;
+        child.x = e.x + Math.cos(ang) * offset;
+        child.y = e.y + Math.sin(ang) * offset;
+        child.hp = e.maxHp * 0.35;
+        child.maxHp = e.maxHp * 0.35;
+        child.radius = e.radius * 0.7;
+        child.damage = e.damage * 0.6;
+        child.isElite = false; // children aren't elite (prevents infinite splitting)
+        child.eliteAffixes = [];
+        child.eliteShieldHp = 0;
+        child.eliteShieldMax = 0;
+        child.resurrectedOnce = false;
+        child.enraged = false;
+        child.baseSpeed = e.baseSpeed * 1.1;
+        child.baseDamage = e.damage * 0.6;
+        child.speed = child.baseSpeed;
+        child.soulValue = Math.round(e.soulValue * 0.3);
+        this.enemies.push(child);
+        this.spawnParticles(child.x, child.y, 6, '#9dffb0', 'magic', 0.4);
+      }
+      this.spawnFloatingText(e.x, e.y - 30, 'SPLIT!', '#9dffb0');
+    }
+
+    // ===== ELITE: volatile — explode on death =====
+    if (e.isElite && e.eliteAffixes.includes('volatile') && !e.isBoss) {
+      const explDmg = e.maxHp * 0.3 + 30;
+      const explRadius = 90;
+      this.spawnParticles(e.x, e.y, 30, '#ff5252', 'spark', 0.6);
+      this.spawnParticles(e.x, e.y, 14, '#ffaa40', 'smoke', 0.8);
+      this.spawnFloatingText(e.x, e.y - 30, 'BOOM!', '#ff5252');
+      // damage player if close
+      const dp = Math.hypot(this.player.x - e.x, this.player.y - e.y);
+      if (dp < explRadius) {
+        this.damagePlayer(explDmg * 0.4, e);
+      }
+      // damage other enemies caught in blast (chain reaction!)
+      for (const other of this.enemies) {
+        if (other === e) continue;
+        const d = Math.hypot(other.x - e.x, other.y - e.y);
+        if (d < explRadius) {
+          this.damageEnemy(other, explDmg, null);
+        }
+      }
+    }
+
     this.enemies.splice(idx, 1);
     this.player.kills++;
     this.player.swarmKillCounter++;
+
+    // ===== COMBO SYSTEM =====
+    if (!e.isBoss) {
+      this.player.comboCount++;
+      this.player.comboTimer = 3; // 3 seconds to maintain combo
+      if (this.player.comboCount > this.player.comboMax) {
+        this.player.comboMax = this.player.comboCount;
+      }
+      // Milestone bonuses at 10/25/50/100 combo
+      const milestones = [10, 25, 50, 100, 200];
+      if (milestones.includes(this.player.comboCount)) {
+        this.spawnFloatingText(e.x, e.y - 60, `${this.player.comboCount}x COMBO!`, '#ffd040');
+        this.spawnParticles(this.player.x, this.player.y, 14, '#ffd040', 'magic', 0.6);
+        // bonus heal soul drop
+        this.souls.push({
+          x: e.x,
+          y: e.y,
+          vx: 0,
+          vy: 0,
+          value: 0,
+          kind: 'heal',
+          life: 14,
+          collected: false,
+          magnetized: false,
+        });
+        // COMBO: Bloodlust — enrage minions for 5s
+        if (this.player.bloodlustActive) {
+          this.bloodlustTimer = 5;
+          this.spawnFloatingText(this.player.x, this.player.y - 60, 'BLOODLUST!', '#ff4040');
+          this.spawnParticles(this.player.x, this.player.y, 20, '#ff4040', 'magic', 0.8);
+        }
+      }
+    } else {
+      // boss kills break combo (reset to 0 since it's a long fight)
+      this.player.comboCount = 0;
+      this.player.comboTimer = 0;
+    }
+
+    // elite kill tracking
+    if (e.isElite) {
+      this.elitesKilled++;
+      // elites always drop a bonus heal
+      if (Math.random() < 0.5) {
+        this.souls.push({
+          x: e.x,
+          y: e.y,
+          vx: 0,
+          vy: 0,
+          value: 0,
+          kind: 'heal',
+          life: 16,
+          collected: false,
+          magnetized: false,
+        });
+      }
+      // Trophy Hunter (permanent): +25% souls from elites per level
+      const eliteBonus = this.permanentBonuses.eliteSoulBonus ?? 0;
+      if (eliteBonus > 0) {
+        const bonusSouls = Math.ceil(e.soulValue * 0.25 * eliteBonus / 2);
+        for (let i = 0; i < bonusSouls; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const sp = 60 + Math.random() * 80;
+          this.souls.push({
+            x: e.x,
+            y: e.y,
+            vx: Math.cos(a) * sp,
+            vy: Math.sin(a) * sp,
+            value: 2,
+            kind: 'normal',
+            life: 14,
+            collected: false,
+            magnetized: false,
+          });
+        }
+      }
+    }
 
     // drop souls
     const soulCount = Math.min(4, Math.max(1, Math.round(e.soulValue / 2)));
@@ -2720,10 +3146,41 @@ export class GameEngine {
         this.player.damage * 0.8 * this.player.necroticExplosionLevel;
       const radius = 70 + this.player.necroticExplosionLevel * 15;
       this.spawnParticles(e.x, e.y, 14, '#80ff40', 'spark', 0.4);
+      // COMBO: Necrotic Bloom — if explosion kills an enemy, chain to another nearby foe
+      let chainTarget: Enemy | null = null;
       for (const other of this.enemies) {
         const d = Math.hypot(other.x - e.x, other.y - e.y);
         if (d < radius) {
+          const hpBefore = other.hp;
           this.damageEnemy(other, explDmg, null);
+          if (
+            this.player.necroticBloomActive &&
+            !chainTarget &&
+            other.hp <= 0 &&
+            hpBefore > 0
+          ) {
+            chainTarget = other;
+          }
+        }
+      }
+      // Chain to one more nearby enemy with reduced damage
+      if (chainTarget && this.enemies.indexOf(chainTarget) < 0) {
+        // chainTarget already removed; find a new nearby enemy
+        const chainDmg = explDmg * 0.6;
+        const chainRadius = radius * 1.2;
+        let chained = false;
+        for (const other of this.enemies) {
+          const d = Math.hypot(other.x - e.x, other.y - e.y);
+          if (d < chainRadius) {
+            this.damageEnemy(other, chainDmg, null);
+            this.spawnParticles(other.x, other.y, 8, '#80ff40', 'spark', 0.3);
+            this.spawnFloatingText(other.x, other.y - 20, 'BLOOM!', '#80ff40');
+            chained = true;
+            break;
+          }
+        }
+        if (!chained) {
+          // optional: no visual if no chain target
         }
       }
     }
@@ -2785,6 +3242,12 @@ export class GameEngine {
     if (p.spiritWalkLevel > 0 && Math.random() < 0.15 * p.spiritWalkLevel) {
       this.spawnFloatingText(p.x, p.y - 24, 'PHASE', '#a0d8ff');
       this.spawnParticles(p.x, p.y, 6, '#a0d8ff', 'magic', 0.4);
+      // COMBO: Phantom Resonance — phase also grants 1s iframes
+      if (p.phantomResonanceActive) {
+        p.iframes = 1;
+        this.spawnFloatingText(p.x, p.y - 40, 'INVULNERABLE', '#ffd040');
+        this.spawnParticles(p.x, p.y, 10, '#ffd040', 'magic', 0.6);
+      }
       return;
     }
 
@@ -2815,6 +3278,10 @@ export class GameEngine {
             if (p.volatileBonesLevel > 0) {
               this.volatileExplosion(m.x, m.y, m.damage * 2 * p.volatileBonesLevel);
             }
+            // COMBO: Grave Echo — 25% chance to cast mini grave call on minion death
+            if (p.graveEchoActive && Math.random() < 0.25) {
+              this.castMiniGraveCall(m.x, m.y);
+            }
             this.spawnParticles(m.x, m.y, 6, '#c8c0a8', 'bone', 0.4);
             this.minions.splice(idx, 1);
             break;
@@ -2831,7 +3298,8 @@ export class GameEngine {
       return;
     }
     p.hp -= dmg;
-    p.iframes = 0.5;
+    // Apply iframe bonus from permanent upgrades
+    p.iframes = 0.5 + (this.permanentBonuses.iframeBonus ?? 0) * 0.1;
     this.spawnParticles(p.x, p.y, 8, '#ff6060', 'spark', 0.4);
     this.spawnFloatingText(p.x, p.y - 24, `-${Math.round(dmg)}`, '#ff8080');
 
@@ -2859,6 +3327,23 @@ export class GameEngine {
   undyingUsedThisRoom = false;
 
   handleDeath() {
+    // Extra Life (permanent upgrade): revive once per run
+    if (this.extraLivesRemaining > 0) {
+      this.extraLivesRemaining--;
+      this.player.hp = Math.floor(this.player.maxHp * 0.5);
+      this.player.iframes = 2;
+      // Clear nearby enemies
+      for (const e of this.enemies) {
+        const d = Math.hypot(e.x - this.player.x, e.y - this.player.y);
+        if (d < 250 && !e.isBoss) {
+          this.damageEnemy(e, this.player.damage * 8, null);
+        }
+      }
+      this.spawnParticles(this.player.x, this.player.y, 50, '#ffd040', 'magic', 1.2);
+      this.spawnParticles(this.player.x, this.player.y, 30, '#ffffff', 'spark', 0.8);
+      this.spawnFloatingText(this.player.x, this.player.y - 40, 'EXTRA LIFE!', '#ffd040');
+      return;
+    }
     // Phoenix Will: revive once per room at 50% HP
     if (
       this.player.skills.has('phoenix_will') &&
@@ -3019,6 +3504,8 @@ export class GameEngine {
     const choices: Upgrade[] = [];
     const available = UPGRADES.filter((u) => {
       if (u.requires && !u.requires(p)) return false;
+      // ===== EPIC UNIQUENESS: epic skills are one-time-only per run =====
+      if (u.rarity === 'epic' && p.skills.has(u.id)) return false;
       return true;
     });
     // bias by build path the player has invested in
@@ -3118,6 +3605,8 @@ export class GameEngine {
     const available = UPGRADES.filter((u) => {
       if (u.rarity === 'common') return false; // only rare and epic
       if (u.requires && !u.requires(p)) return false;
+      // EPIC UNIQUENESS: epic skills are one-time-only per run
+      if (u.rarity === 'epic' && p.skills.has(u.id)) return false;
       return true;
     });
     const pool = [...available];
@@ -3165,6 +3654,8 @@ export class GameEngine {
       const available = UPGRADES.filter((u) => {
         if (u.rarity === 'common') return false;
         if (u.requires && !u.requires(p)) return false;
+        // EPIC UNIQUENESS: epic skills are one-time-only per run
+        if (u.rarity === 'epic' && p.skills.has(u.id)) return false;
         return true;
       });
       const pool = [...available];
@@ -3258,6 +3749,10 @@ export class GameEngine {
       })),
       soulMeter: p.soulMeter,
       soulMeterMax: p.soulMeterMax,
+      comboCount: p.comboCount,
+      comboTimer: p.comboTimer,
+      comboMax: p.comboMax,
+      elitesKilled: this.elitesKilled,
       cooldowns: {
         dash: p.dashCooldownTimer,
         dashMax: p.dashCooldown,

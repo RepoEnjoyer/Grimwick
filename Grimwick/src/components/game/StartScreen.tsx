@@ -124,6 +124,8 @@ export function StartScreen({
         <div>✦ All abilities auto-cast</div>
         <div>✦ Soul meter charges from kills → Soul Nova</div>
         <div>✦ Minions raise automatically from kills</div>
+        <div>✦ Chain kills for COMBO bonuses (10/25/50/100)</div>
+        <div>✦ Elite enemies (⚡) drop bonus souls &amp; relics</div>
       </div>
     </div>
   );

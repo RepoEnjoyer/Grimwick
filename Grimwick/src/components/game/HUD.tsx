@@ -79,6 +79,23 @@ const SKILL_NAMES: Record<string, string> = {
   soul_magnet_aura: 'Soul Magnet Aura',
   overcharge: 'Overcharge',
   twin_souls: 'Twin Souls',
+  // ===== NEW COMBO SKILLS =====
+  soul_resonance: 'Soul Resonance',
+  frostbite_curse: 'Frostbite Curse',
+  chain_reaction: 'Chain Reaction',
+  bone_storm_surge: 'Bone Storm Surge',
+  vampiric_hunger: 'Vampiric Hunger',
+  soul_battery_overload: 'Soul Battery Overload',
+  grave_echo: 'Grave Echo',
+  phantom_resonance: 'Phantom Resonance',
+  crit_cascade: 'Crit Cascade',
+  toxic_synergy: 'Toxic Synergy',
+  shattered_bone: 'Shattered Bone',
+  soul_conduit: 'Soul Conduit',
+  bloodlust: 'Bloodlust',
+  arcane_amplifier: 'Arcane Amplifier',
+  temporal_echo: 'Temporal Echo',
+  necrotic_bloom: 'Necrotic Bloom',
 };
 
 function AutoCooldownBar({
@@ -212,11 +229,62 @@ export function HUD({ snapshot: s }: Props) {
             </span>
           </div>
         )}
-        <div className="bg-zinc-900/80 border border-zinc-700 px-3 py-1 rounded-sm text-[10px]">
-          <span className="text-zinc-500">Kills: </span>
-          <span className="text-purple-200 font-bold">{s.kills}</span>
+        <div className="flex gap-1">
+          <div className="bg-zinc-900/80 border border-zinc-700 px-3 py-1 rounded-sm text-[10px]">
+            <span className="text-zinc-500">Kills: </span>
+            <span className="text-purple-200 font-bold">{s.kills}</span>
+          </div>
+          {s.elitesKilled > 0 && (
+            <div className="bg-zinc-900/80 border border-amber-700/60 px-3 py-1 rounded-sm text-[10px]">
+              <span className="text-zinc-500">Elites: </span>
+              <span className="text-amber-300 font-bold">{s.elitesKilled}</span>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* ===== COMBO COUNTER (top center, below boss bar) ===== */}
+      {s.comboCount >= 3 && !s.room.isBoss && (
+        <div className="absolute top-20 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none">
+          <div
+            className="text-3xl font-black tracking-wider drop-shadow"
+            style={{
+              color:
+                s.comboCount >= 50
+                  ? '#ff40ff'
+                  : s.comboCount >= 25
+                    ? '#ffd040'
+                    : s.comboCount >= 10
+                      ? '#ff8040'
+                      : '#ffffff',
+              textShadow: '0 0 12px currentColor',
+              transform:
+                s.comboCount >= 10
+                  ? `scale(${1 + Math.min(0.3, s.comboCount * 0.005)})`
+                  : 'scale(1)',
+            }}
+          >
+            {s.comboCount}
+            <span className="text-base ml-1">x</span>
+          </div>
+          <div className="text-[10px] text-zinc-400 uppercase tracking-widest">
+            Combo
+          </div>
+          {/* Combo timer bar */}
+          <div className="w-24 h-1 bg-zinc-900 border border-zinc-700 rounded-sm overflow-hidden mt-0.5">
+            <div
+              className="h-full transition-all"
+              style={{
+                width: `${(s.comboTimer / 3) * 100}%`,
+                background:
+                  s.comboCount >= 25
+                    ? 'linear-gradient(90deg,#ffd040,#ff40ff)'
+                    : 'linear-gradient(90deg,#80a0ff,#ffd040)',
+              }}
+            />
+          </div>
+        </div>
+      )}
 
       {/* ===== TOP CENTER: boss bar ===== */}
       {s.room.isBoss && s.room.bossHp !== undefined && s.room.bossMaxHp && (

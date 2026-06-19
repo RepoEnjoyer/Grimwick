@@ -11,6 +11,29 @@ import { DeathScreen } from './DeathScreen';
 import { CryptHub } from './CryptHub';
 import { PauseMenu } from './PauseMenu';
 
+// Build the permanent bonuses object from saved progress + selected wand
+function buildBonuses(prog: PermanentProgress, wandType: string) {
+  return {
+    healthBonus: prog.upgrades.startHealth,
+    wandPowerBonus: prog.upgrades.wandPower,
+    soulGainBonus: prog.upgrades.soulGain,
+    minionPowerBonus: prog.upgrades.minionPower,
+    moveSpeedBonus: prog.upgrades.moveSpeed,
+    relicLuck: prog.upgrades.relicLuck,
+    wandType,
+    startingSouls: prog.upgrades.startingSouls,
+    iframeBonus: prog.upgrades.iframeDuration,
+    pickupRangeBonus: prog.upgrades.pickupRange,
+    critChanceBonus: prog.upgrades.critChance,
+    fireRateBonus: prog.upgrades.fireRate,
+    projectileSpeedBonus: prog.upgrades.projectileSpeed,
+    extraLives: prog.upgrades.extraLife,
+    eliteSoulBonus: prog.upgrades.eliteSoulBonus,
+    startingRelicChance: prog.upgrades.startingRelic,
+    soulMeterReduction: prog.upgrades.soulMeterSize,
+  };
+}
+
 export function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<GameEngine | null>(null);
@@ -84,6 +107,16 @@ export function GameCanvas() {
         moveSpeedBonus: prog.upgrades.moveSpeed,
         relicLuck: prog.upgrades.relicLuck,
         wandType: selectedWandType,
+        startingSouls: prog.upgrades.startingSouls,
+        iframeBonus: prog.upgrades.iframeDuration,
+        pickupRangeBonus: prog.upgrades.pickupRange,
+        critChanceBonus: prog.upgrades.critChance,
+        fireRateBonus: prog.upgrades.fireRate,
+        projectileSpeedBonus: prog.upgrades.projectileSpeed,
+        extraLives: prog.upgrades.extraLife,
+        eliteSoulBonus: prog.upgrades.eliteSoulBonus,
+        startingRelicChance: prog.upgrades.startingRelic,
+        soulMeterReduction: prog.upgrades.soulMeterSize,
       }
     );
     engineRef.current = engine;
@@ -112,15 +145,7 @@ export function GameCanvas() {
     if (!engine) return;
     // update wand type and bonuses
     const prog = loadProgress();
-    engine.permanentBonuses = {
-      healthBonus: prog.upgrades.startHealth,
-      wandPowerBonus: prog.upgrades.wandPower,
-      soulGainBonus: prog.upgrades.soulGain,
-      minionPowerBonus: prog.upgrades.minionPower,
-      moveSpeedBonus: prog.upgrades.moveSpeed,
-      relicLuck: prog.upgrades.relicLuck,
-      wandType: selectedWandType,
-    };
+    engine.permanentBonuses = buildBonuses(prog, selectedWandType);
     engine.startRun();
     setShowCrypt(false);
   }, [selectedWandType]);

@@ -169,6 +169,24 @@ export interface Player {
   comboTimer: number; // seconds remaining before combo resets
   comboMax: number; // highest combo this run
 
+  // ===== NEW COMBO SKILL FLAGS =====
+  soulResonanceActive: boolean; // minions deal +50% dmg if 3+ minions
+  frostbiteCurseActive: boolean; // frost slows also mark enemies
+  chainReactionActive: boolean; // chain lightning bounces explode
+  boneStormSurgeActive: boolean; // bone storm doubles if aura active
+  vampiricHungerActive: boolean; // vampiric aura also heals minions
+  soulBatteryOverloadActive: boolean; // soul nova triggers meteor
+  graveEchoActive: boolean; // minion death chance to cast mini grave call
+  phantomResonanceActive: boolean; // spirit walk gives 1s iframes
+  critCascadeActive: boolean; // crits trigger chain lightning
+  toxicSynergyActive: boolean; // marked enemies take 2x DoT
+  shatteredBoneActive: boolean; // bone wall shatters into shards on expire
+  soulConduitActive: boolean; // every 5th soul pickup triggers mini nova
+  bloodlustActive: boolean; // combo milestones enrage minions temporarily
+  arcaneAmplifierActive: boolean; // wands fire 1 extra shot when souls full
+  temporalEchoActive: boolean; // time warp also slows enemy projectiles
+  necroticBloomActive: boolean; // necrotic explosion chains if kills enemy
+
   // bookkeeping
   lastFireTime: number;
   iframes: number;
@@ -257,6 +275,7 @@ export interface Minion {
   vx: number;
   vy: number;
   hp: number;
+  maxHp: number;
   damage: number;
   speed: number;
   radius: number;
@@ -398,6 +417,17 @@ export interface PermanentProgress {
     minionPower: number;
     relicLuck: number;
     moveSpeed: number;
+    // ===== NEW PERMANENT UPGRADES =====
+    startingSouls: number; // begin each run with bonus souls
+    iframeDuration: number; // longer invuln after taking a hit
+    pickupRange: number; // larger soul pickup radius
+    critChance: number; // base crit chance %
+    fireRate: number; // base wand fire rate
+    projectileSpeed: number; // faster wand bolts
+    extraLife: number; // revives per run
+    eliteSoulBonus: number; // +bonus souls from elites
+    startingRelic: number; // chance to start with a random relic
+    soulMeterSize: number; // smaller soul meter (faster novas)
   };
 }
 

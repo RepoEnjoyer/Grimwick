@@ -17,7 +17,7 @@ export function CryptHub({ progress, onClose, onProgressChange }: Props) {
   const [error, setError] = useState<string>('');
 
   const handleBuy = (
-    id: 'startHealth' | 'wandPower' | 'soulGain' | 'minionPower' | 'moveSpeed' | 'relicLuck'
+    id: keyof PermanentProgress['upgrades']
   ) => {
     const newProgress = buyUpgrade(progress, id);
     if (newProgress) {
@@ -78,13 +78,7 @@ export function CryptHub({ progress, onClose, onProgressChange }: Props) {
       <div className="flex-1 overflow-y-auto p-6">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 max-w-6xl mx-auto">
           {PERMANENT_UPGRADE_DEFS.map((def) => {
-            const upgradeId = def.id as
-              | 'startHealth'
-              | 'wandPower'
-              | 'soulGain'
-              | 'minionPower'
-              | 'moveSpeed'
-              | 'relicLuck';
+            const upgradeId = def.id as keyof PermanentProgress['upgrades'];
             const level = progress.upgrades[upgradeId];
             const maxed = level >= def.maxLevel;
             const cost = def.cost(level);

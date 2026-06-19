@@ -97,6 +97,23 @@ const SKILL_NAMES: Record<string, string> = {
   soul_magnet_aura: 'Soul Magnet Aura',
   overcharge: 'Overcharge',
   twin_souls: 'Twin Souls',
+  // ===== NEW COMBO SKILLS =====
+  soul_resonance: 'Soul Resonance',
+  frostbite_curse: 'Frostbite Curse',
+  chain_reaction: 'Chain Reaction',
+  bone_storm_surge: 'Bone Storm Surge',
+  vampiric_hunger: 'Vampiric Hunger',
+  soul_battery_overload: 'Soul Battery Overload',
+  grave_echo: 'Grave Echo',
+  phantom_resonance: 'Phantom Resonance',
+  crit_cascade: 'Crit Cascade',
+  toxic_synergy: 'Toxic Synergy',
+  shattered_bone: 'Shattered Bone',
+  soul_conduit: 'Soul Conduit',
+  bloodlust: 'Bloodlust',
+  arcane_amplifier: 'Arcane Amplifier',
+  temporal_echo: 'Temporal Echo',
+  necrotic_bloom: 'Necrotic Bloom',
 };
 
 export function PauseMenu({ getSummary, onResume, onRestart, onReturnToMenu }: Props) {
