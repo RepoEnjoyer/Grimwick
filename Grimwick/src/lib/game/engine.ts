@@ -59,6 +59,9 @@ export interface EngineCallbacks {
     elitesKilled: number;
     maxCombo: number;
     skillsCount: number;
+    zoneCleared: 'crypt' | 'void' | 'abyss' | null;
+    nextZoneUnlocked: 'crypt' | 'void' | 'abyss' | null;
+    isTrueVictory: boolean;
   }) => void;
   onVictory?: () => void;
 }
@@ -100,11 +103,26 @@ export class GameEngine {
   lightningArcs: LightningArc[] = [];
 
   // room state
-  roomNumber = 0;
+  roomNumber = 0; // local room number within current zone (1-based after first room)
   waveNumber = 0;
   totalWavesThisRoom = 0;
   betweenWaves = 0; // delay timer
   roomCleared = false;
+  // ===== ZONE SYSTEM =====
+  currentZone: 'crypt' | 'void' | 'abyss' = 'crypt';
+  // Room offset per zone — used for difficulty scaling & boss schedule lookup
+  // Crypt: rooms 1-16 (offset 0)
+  // Void: rooms 1-8 (offset 16, internal 17-24)
+  // Abyss: rooms 1-2+ (offset 24, internal 25-26+)
+  static ZONE_ROOM_OFFSET: Record<'crypt' | 'void' | 'abyss', number> = {
+    crypt: 0,
+    void: 16,
+    abyss: 24,
+  };
+  // Get the global room number (used for boss schedule, enemy scaling, etc.)
+  get globalRoomNumber(): number {
+    return this.roomNumber + GameEngine.ZONE_ROOM_OFFSET[this.currentZone];
+  }
   upgradeChoices: Upgrade[] = [];
   relicChoices: Relic[] = [];
   chestChoices: Upgrade[] = [];
@@ -191,7 +209,8 @@ export class GameEngine {
       eliteSoulBonus: number;
       startingRelicChance: number;
       soulMeterReduction: number;
-    }
+    },
+    startingZone: 'crypt' | 'void' | 'abyss' = 'crypt'
   ) {
     this.canvas = canvas;
     const ctx = canvas.getContext('2d');
@@ -235,8 +254,13 @@ export class GameEngine {
     this.boneWalls = [];
     this.meteors = [];
     this.lightningArcs = [];
-    this.roomNumber = 0;
+    this.roomNumber = 0; // local zone room number, reset to 0 (becomes 1 after startNextRoom)
     this.waveNumber = 0;
+    // Announce zone at run start
+    const zoneInfo = STAGE_NAMES[this.currentZone];
+    this.spawnFloatingText(GAME_W / 2, GAME_H / 2 - 100, zoneInfo.name, zoneInfo.color);
+    this.spawnFloatingText(GAME_W / 2, GAME_H / 2 - 60, zoneInfo.subtitle, zoneInfo.color);
+    this.spawnParticles(GAME_W / 2, GAME_H / 2, 40, zoneInfo.color, 'magic', 1.2);
     this.boneServantSpawned = false;
     this.rottingFamiliarSpawned = false;
     this.boneBeastSpawned = false;
@@ -299,7 +323,8 @@ export class GameEngine {
       kills: p.kills,
       minions: this.minions.length,
       maxMinions: p.maxMinions,
-      room: this.roomNumber,
+      room: this.roomNumber, // local zone room number
+      zone: this.currentZone, // current zone
       wave: `${this.waveNumber}/${this.totalWavesThisRoom}`,
       skills: Array.from(p.skills),
       relics: this.relics.map((r) => ({
@@ -352,8 +377,8 @@ export class GameEngine {
     }
     drawGame(this);
     if (this.phase === 'playing') {
-      // throttle HUD updates to ~10/sec to avoid React thrash
-      if (Math.floor(time / 100) !== Math.floor((time - dt * 1000) / 100)) {
+      // throttle HUD updates to ~5/sec to avoid React thrash (was 10/sec — too frequent for late game)
+      if (Math.floor(time / 200) !== Math.floor((time - dt * 1000) / 200)) {
         this.emitHud();
       }
     }
@@ -1147,6 +1172,12 @@ export class GameEngine {
     kind: Projectile['kind'];
     color: string;
   }) {
+    // ===== PERFORMANCE: cap player projectiles to prevent lag from ricochet + multi-shot builds =====
+    const MAX_PROJECTILES = 200;
+    if (this.projectiles.length >= MAX_PROJECTILES) {
+      // Remove oldest projectile
+      this.projectiles.shift();
+    }
     this.projectiles.push({
       radius: 6,
       life: 8, // longer lifetime — bullets die on wall hit, not by timer
@@ -1168,6 +1199,11 @@ export class GameEngine {
     kind: Projectile['kind'];
     color: string;
   }) {
+    // ===== PERFORMANCE: cap enemy projectiles =====
+    const MAX_ENEMY_PROJECTILES = 150;
+    if (this.enemyProjectiles.length >= MAX_ENEMY_PROJECTILES) {
+      this.enemyProjectiles.shift();
+    }
     this.enemyProjectiles.push({
       radius: 6,
       life: 4,
@@ -2938,7 +2974,15 @@ export class GameEngine {
     kind: Particle['kind'],
     life: number
   ) {
-    for (let i = 0; i < count; i++) {
+    // ===== PERFORMANCE: hard cap on total particles to prevent late-game lag =====
+    const MAX_PARTICLES = 400;
+    if (this.particles.length >= MAX_PARTICLES) {
+      // Drop oldest particles to make room for new ones
+      this.particles.splice(0, this.particles.length - MAX_PARTICLES + count);
+    }
+    // Reduce count if we're nearing the cap
+    const effectiveCount = Math.min(count, MAX_PARTICLES - this.particles.length);
+    for (let i = 0; i < effectiveCount; i++) {
       const a = Math.random() * Math.PI * 2;
       const sp = 40 + Math.random() * 140;
       this.particles.push({
@@ -2956,6 +3000,11 @@ export class GameEngine {
   }
 
   spawnFloatingText(x: number, y: number, text: string, color: string) {
+    // ===== PERFORMANCE: cap floating texts to prevent spam lag =====
+    const MAX_FLOATING_TEXTS = 30;
+    if (this.floatingTexts.length >= MAX_FLOATING_TEXTS) {
+      this.floatingTexts.shift();
+    }
     this.floatingTexts.push({
       x,
       y,
@@ -2983,13 +3032,18 @@ export class GameEngine {
   }
 
   queueSpawn(x: number, y: number, kind: EnemyKind) {
+    // ===== PERFORMANCE: cap total pending spawns + active enemies to prevent lag =====
+    const MAX_ACTIVE_ENEMIES = 80;
+    if (this.enemies.length + this.pendingSpawns.length >= MAX_ACTIVE_ENEMIES) {
+      return; // skip spawn if at cap
+    }
     this.pendingSpawns.push({ x, y, t: 0.5, kind });
   }
 
   spawnEnemyAt(kind: EnemyKind, x: number, y: number) {
     const tpl = ENEMY_TEMPLATES[kind];
-    const hpScale = enemyHpScale(this.roomNumber);
-    const dmgScale = enemyDamageScale(this.roomNumber);
+    const hpScale = enemyHpScale(this.globalRoomNumber);
+    const dmgScale = enemyDamageScale(this.globalRoomNumber);
 
     // ===== ELITE SPAWN LOGIC =====
     // Base chance scales with room depth. After room 2, every 6-10 spawns one elite.
@@ -3002,20 +3056,20 @@ export class GameEngine {
       kind === 'void_wraith' ||
       kind === 'void_leviathan' ||
       kind === 'void_reaper';
-    if (isVoidEnemy && this.roomNumber >= 17) {
+    if (isVoidEnemy && this.globalRoomNumber >= 17) {
       // Void stage: all void enemies are elite with 1-2 affixes
       isElite = true;
-      const affixCount = this.roomNumber >= 25 ? 2 : 1;
+      const affixCount = this.globalRoomNumber >= 25 ? 2 : 1;
       affixes = rollEliteAffixes(affixCount);
-    } else if (this.roomNumber >= 2) {
+    } else if (this.globalRoomNumber >= 2) {
       // rough chance per spawn: 4% + room * 1%, capped at 12%
-      const chance = Math.min(0.12, 0.04 + this.roomNumber * 0.01);
+      const chance = Math.min(0.12, 0.04 + this.globalRoomNumber * 0.01);
       // Force-spawn elite every 12 enemies if we haven't had one this cycle
       const forceElite = this.eliteSpawnCounter >= 12;
       if (forceElite || Math.random() < chance) {
         isElite = true;
         this.eliteSpawnCounter = 0;
-        const affixCount = this.roomNumber >= 8 ? 2 : 1;
+        const affixCount = this.globalRoomNumber >= 8 ? 2 : 1;
         affixes = rollEliteAffixes(affixCount);
       }
     }
@@ -3277,6 +3331,11 @@ export class GameEngine {
 
   // ===== NEW: damage number helper (uses floating text with size/bold) =====
   spawnDamageNumber(x: number, y: number, text: string, color: string, size: number, bold?: boolean) {
+    // ===== PERFORMANCE: cap damage numbers to prevent late-game lag =====
+    const MAX_DAMAGE_NUMBERS = 25;
+    if (this.floatingTexts.length >= MAX_DAMAGE_NUMBERS) {
+      this.floatingTexts.shift();
+    }
     this.floatingTexts.push({
       x,
       y,
@@ -3465,9 +3524,9 @@ export class GameEngine {
       });
     }
 
-    // NEW: Blessed by God — chance to drop golden chest
+    // NEW: Blessed by God — 1% flat chance to drop golden chest (nerfed from previous 12%)
     if (this.player.blessedByGodLevel > 0 && !e.isBoss) {
-      const chestChance = 0.04 * this.player.blessedByGodLevel; // 4% per level
+      const chestChance = 0.01; // flat 1% per kill
       if (Math.random() < chestChance) {
         this.souls.push({
           x: e.x,
@@ -3744,20 +3803,38 @@ export class GameEngine {
       elitesKilled: this.elitesKilled,
       maxCombo: this.player.comboMax,
       skillsCount: this.player.skills.size,
+      zoneCleared: null,
+      nextZoneUnlocked: null,
+      isTrueVictory: false,
     });
   }
 
   phoenixUsedThisRoom = false;
 
+  // ZONE FINAL BOSSES — defeating these ends the run with zone-victory AND unlocks the next zone
+  static ZONE_FINAL_BOSSES: Record<'crypt' | 'void' | 'abyss', BossKind> = {
+    crypt: 'bone_dragon',
+    void: 'void_leviathan',
+    abyss: 'lich_king',
+  };
+  // Track which zone was just cleared (so GameCanvas can unlock the next one)
+  zoneJustCleared: 'crypt' | 'void' | 'abyss' | null = null;
+
   handleBossDefeated(kind: BossKind) {
-    // Stage transitions: only Lich King (final boss of Stage 3) ends the game with victory
-    if (kind === 'lich_king') {
-      // TRUE VICTORY — final boss of Stage 3 defeated
+    // ZONE SYSTEM: each zone has a final boss. Defeating it ends the run with zone-victory.
+    const zoneFinalBoss = GameEngine.ZONE_FINAL_BOSSES[this.currentZone];
+    if (kind === zoneFinalBoss) {
+      this.zoneJustCleared = this.currentZone;
+      // Determine next zone to unlock
+      const nextZone: 'crypt' | 'void' | 'abyss' | null =
+        this.currentZone === 'crypt' ? 'void' :
+        this.currentZone === 'void' ? 'abyss' : null;
+      const isTrueVictory = this.currentZone === 'abyss'; // Lich King = true final victory
       this.setPhase('dead');
       this.cb.onDeath({
         soulsCollected: this.player.soulsCollected,
         roomsCleared: this.roomNumber,
-        bossesDefeated: 9,
+        bossesDefeated: this.currentZone === 'crypt' ? 6 : this.currentZone === 'void' ? 8 : 9,
         reachedVictory: true,
         timeSurvived: this.gameTime,
         damageTaken: Math.round(this.damageTaken),
@@ -3766,10 +3843,12 @@ export class GameEngine {
         elitesKilled: this.elitesKilled,
         maxCombo: this.player.comboMax,
         skillsCount: this.player.skills.size,
+        zoneCleared: this.currentZone,
+        nextZoneUnlocked: nextZone,
+        isTrueVictory,
       });
     }
-    // bone_dragon no longer ends the game — player continues into Stage 2 (Void)
-    // void_leviathan no longer ends the game — player continues into Stage 3 (Abyss)
+    // Mid-zone bosses (e.g. bell_knight, void_reaper_king) just continue the run
   }
 
   // ---------------- waves & rooms ----------------
@@ -3804,25 +3883,17 @@ export class GameEngine {
   }
 
   startNextRoom() {
-    const prevStage = getStage(this.roomNumber);
+    // ZONE SYSTEM: roomNumber is local to the zone; globalRoomNumber is used for stage/boss logic
     this.roomNumber++;
-    const newStage = getStage(this.roomNumber);
+    const globalRoom = this.globalRoomNumber;
     this.waveNumber = 0;
     this.roomCleared = false;
     this.betweenWaves = 0;
     this.undyingUsedThisRoom = false;
     this.phoenixUsedThisRoom = false;
 
-    // Stage transition announcement
-    if (newStage !== prevStage) {
-      const stageInfo = STAGE_NAMES[newStage];
-      this.spawnFloatingText(GAME_W / 2, GAME_H / 2 - 100, stageInfo.name, stageInfo.color);
-      this.spawnFloatingText(GAME_W / 2, GAME_H / 2 - 60, stageInfo.subtitle, stageInfo.color);
-      this.spawnParticles(GAME_W / 2, GAME_H / 2, 40, stageInfo.color, 'magic', 1.2);
-    }
-
-    // boss room check
-    const bossEntry = BOSS_ROOM_SCHEDULE.find((b) => b.room === this.roomNumber);
+    // boss room check (uses global room number)
+    const bossEntry = BOSS_ROOM_SCHEDULE.find((b) => b.room === globalRoom);
     if (bossEntry) {
       this.totalWavesThisRoom = 1;
       this.waveNumber = 1; // boss counts as wave 1 of 1
@@ -3839,7 +3910,7 @@ export class GameEngine {
       });
       this.spawnFloatingText(GAME_W / 2, GAME_H / 2 - 60, 'BOSS APPROACHES', '#ff6060');
     } else {
-      this.totalWavesThisRoom = wavesPerRoom(this.roomNumber);
+      this.totalWavesThisRoom = wavesPerRoom(globalRoom);
       this.spawnNextWave();
     }
     this.emitHud();
@@ -3848,12 +3919,17 @@ export class GameEngine {
   spawnNextWave() {
     this.waveNumber++;
     const blackCandle = this.relics.some((r) => r.id === 'black_candle');
-    const kinds = generateWave(
-      this.roomNumber,
+    let kinds = generateWave(
+      this.globalRoomNumber,
       this.waveNumber - 1,
       this.totalWavesThisRoom,
       blackCandle
     );
+    // ===== PERFORMANCE: cap wave size to prevent late-game lag =====
+    const MAX_WAVE_SIZE = 40;
+    if (kinds.length > MAX_WAVE_SIZE) {
+      kinds = kinds.slice(0, MAX_WAVE_SIZE);
+    }
     for (const kind of kinds) {
       // spawn from edges
       const edge = Math.floor(Math.random() * 4);
@@ -4212,10 +4288,10 @@ export class GameEngine {
         survival: countSkillsInPath(p, 'survival'),
         generic: countSkillsInPath(p, 'generic'),
       },
-      // Stage info
-      stage: getStage(this.roomNumber),
-      stageName: STAGE_NAMES[getStage(this.roomNumber)].name,
-      stageColor: STAGE_NAMES[getStage(this.roomNumber)].color,
+      // Stage info — based on global room number (which factors in zone offset)
+      stage: getStage(this.globalRoomNumber),
+      stageName: STAGE_NAMES[getStage(this.globalRoomNumber)].name,
+      stageColor: STAGE_NAMES[getStage(this.globalRoomNumber)].color,
       targetId: this.currentTargetId,
       targetX: this.currentTargetId
         ? this.enemies.find((e) => e.id === this.currentTargetId)?.x ?? 0

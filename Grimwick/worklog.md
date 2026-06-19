@@ -666,3 +666,106 @@ Stage Summary:
 - Game no longer ends at Bone Dragon — players can continue into 2 entirely new advanced stages with completely different visuals, enemies, and difficulty mechanics
 - True victory now requires defeating the Lich King at room 26
 - All systems verified end-to-end via Agent Browser, no errors
+
+---
+Task ID: 8
+Agent: main (super-z)
+Task: 1) Nerf "I AM BLESSED BY GOD" chest drop rate from 12% to 1%. 2) Fix late-game lag (performance optimization). 3) Restructure stages into separate unlocked zones selectable from the menu.
+
+Work Log:
+
+- NERF "I AM BLESSED BY GOD":
+  - Updated description in content.ts: "DIVINE: 1% chance for non-boss enemies to drop golden chests"
+  - Changed apply(): blessedByGodLevel = 1 (was 3)
+  - Updated engine killEnemy chest drop logic: flat 1% chance (was 0.04 * level = 12%)
+  - Verified via 10,000-sample test: 1.12% drop rate (within statistical noise of 1%)
+
+- PERFORMANCE OPTIMIZATIONS (to fix late-game lag):
+  - Added MAX_PARTICLES = 400 cap in spawnParticles (drops oldest when exceeded)
+  - Added MAX_FLOATING_TEXTS = 30 cap in spawnFloatingText (FIFO shift)
+  - Added MAX_DAMAGE_NUMBERS = 25 cap in spawnDamageNumber (FIFO shift)
+  - Added MAX_PROJECTILES = 200 cap in spawnProjectile (shifts oldest)
+  - Added MAX_ENEMY_PROJECTILES = 150 cap in spawnEnemyProjectile (shifts oldest)
+  - Added MAX_ACTIVE_ENEMIES = 80 cap in queueSpawn (skips spawn when at cap)
+  - Added MAX_WAVE_SIZE = 40 cap in spawnNextWave (slices wave if too large)
+  - Throttled HUD updates from 10/sec to 5/sec (Math.floor(time / 200) instead of / 100)
+  - Optimized drawParticle: replaced expensive shadowBlur glowCircle calls with simple arc fills
+  - Added off-screen culling for particles (skip drawing if outside bounds +20px)
+  - Verified: 50 spawnParticles(20 each) → 400 cap. 500 spawnProjectile → 200 cap. 500 spawnEnemyProjectile → 150 cap. 200 queueSpawn → 80 cap.
+
+- ZONE SYSTEM RESTRUCTURE (stages become separate unlocked zones):
+  - Added currentZone field to engine ('crypt' | 'void' | 'abyss', default 'crypt')
+  - Added ZONE_ROOM_OFFSET static map: crypt=0, void=16, abyss=24
+  - Added globalRoomNumber getter: returns this.roomNumber + ZONE_ROOM_OFFSET[currentZone]
+  - Local roomNumber now resets to 0 at run start (counts within current zone only)
+  - Updated all difficulty/boss/stage logic to use globalRoomNumber instead of roomNumber:
+    * enemyHpScale, enemyDamageScale
+    * elite spawn logic (void enemies auto-elite in globalRoom >= 17)
+    * generateWave (void/abyss enemy pools)
+    * wavesPerRoom
+    * BOSS_ROOM_SCHEDULE lookup
+    * getStage() for theme/background
+    * emitHud stage info
+  - Updated constructor to accept startingZone parameter
+  - Updated startRun to announce zone at start (zone name + colored particles)
+  - Removed the old stage-transition code in startNextRoom (no longer needed since zones are separate)
+  - getBuildSummary now returns local room + zone info
+  - HUD shows local zone room number (1-16 for crypt, 1-8 for void, 1-2 for abyss)
+
+- ZONE FINAL BOSS SYSTEM:
+  - Added ZONE_FINAL_BOSSES static map: crypt=bone_dragon, void=void_leviathan, abyss=lich_king
+  - Added zoneJustCleared tracking field
+  - Updated handleBossDefeated:
+    * When zone's final boss is defeated, run ends with reachedVictory=true
+    * Computes nextZone: crypt→void, void→abyss, abyss→null (true victory)
+    * isTrueVictory=true only for abyss (Lich King)
+    * Passes zoneCleared, nextZoneUnlocked, isTrueVictory in onDeath callback
+  - Mid-zone bosses (bell_knight, void_reaper_king, etc.) just continue the run
+
+- PERSISTENCE UPDATES:
+  - Added unlockZone() function in persistence.ts (idempotent — no-op if already unlocked)
+  - Updated GameCanvas onDeath callback: if r.nextZoneUnlocked is set, call unlockZone()
+  - unlockedZones now persists: ['Crypt'] → ['Crypt', 'Void'] → ['Crypt', 'Void', 'Abyss']
+
+- STARTSCREEN REWRITE (zone selection UI):
+  - Added ZONE_INFO table with name, subtitle, color, description, bossName, roomRange per zone
+  - Added zone selection buttons (3 cards) with locked/unlocked state
+  - Locked zones are disabled with "🔒 LOCKED" label and cursor-not-allowed
+  - Selected zone shows colored border + glow + roomRange
+  - Selected zone description shown below buttons
+  - Start button text changes: "ENTER THE CRYPT" / "ENTER THE VOID DEPTHS" / "ENTER THE ABYSSAL THRONE"
+  - Added "Unlocked Zones" display in legacy stats panel
+
+- DEATH SCREEN UPDATES:
+  - Updated Props type to include zoneCleared, nextZoneUnlocked, isTrueVictory
+  - Added ZONE_VICTORY_LABELS table with name, subtitle, color, unlockedText per zone
+  - Victory screen now shows zone-specific title (e.g. "THE CRYPT CLEARED")
+  - "ZONE CLEARED" vs "TRUE VICTORY" title (true victory only for abyss/Lich King)
+  - Zone unlock banner shows "⚔ THE VOID DEPTHS UNLOCKED" etc. with colored glow
+  - True victory uses golden gradient background, zone clear uses amber→purple
+
+- PAUSE MENU UPDATES:
+  - Added zone field to BuildSummary interface
+  - Added ZONE_LABELS map
+  - Room StatCard now shows "Room N (ZONE)" (e.g. "Room 5 (CRYPT)")
+
+- CRYPT HUB UPDATES:
+  - Updated "Dungeon Zones" unlock card hint: "Unlock by clearing previous zone's final boss"
+
+- VERIFIED via Agent Browser:
+  - Start screen shows 3 zones: Crypt (unlocked), Void (locked), Abyss (locked)
+  - Clearing Crypt (defeat Bone Dragon at local room 16): zoneJustCleared='crypt', Void unlocked in localStorage
+  - After unlock, StartScreen shows Void as selectable, Abyss still locked
+  - Selecting Void + starting run: currentZone='void', localRoom=1, globalRoom=17, all void enemies are elite
+  - Void Reaper King spawns at local room 2 (global 18)
+  - Clearing Void (defeat Void Leviathan at local room 6 / global 22): zoneJustCleared='void', Abyss unlocked
+  - Selecting Abyss + starting run: currentZone='abyss', localRoom=1, globalRoom=25
+  - Performance caps verified: 400 particles max, 200 projectiles max, 150 enemy projectiles max, 80 active enemies max
+  - Blessed by God: 1.12% drop rate over 10,000 samples (target 1%)
+  - No console errors (only minor backgroundClip style warning)
+
+Stage Summary:
+- BLESSED BY GOD nerfed from 12% → 1% chest drop rate (verified statistically)
+- LAG FIXED via 7 hard caps: 400 particles, 200 projectiles, 150 enemy projectiles, 80 enemies, 40 wave size, 30 floating texts, 25 damage numbers. Also throttled HUD to 5/sec and optimized particle rendering (removed expensive shadowBlur, added off-screen culling).
+- ZONE SYSTEM: Crypt, Void, and Abyss are now SEPARATE zones selectable from the StartScreen menu. Each zone has its own local room counter (1-N). Defeating the zone's final boss (Bone Dragon / Void Leviathan / Lich King) ends the run with "ZONE CLEARED" victory AND unlocks the next zone in the menu. True victory only at Lich King (Abyss).
+- All systems verified end-to-end via Agent Browser, no errors

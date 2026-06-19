@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { GameEngine, GAME_W, GAME_H } from '@/lib/game/engine';
 import type { GamePhase, HudSnapshot, Relic, Upgrade } from '@/lib/game/types';
-import { loadProgress, type PermanentProgress } from '@/lib/game/persistence';
+import { loadProgress, unlockZone, type PermanentProgress } from '@/lib/game/persistence';
 import { HUD } from './HUD';
 import { StartScreen } from './StartScreen';
 import { UpgradeScreen } from './UpgradeScreen';
@@ -34,6 +34,8 @@ function buildBonuses(prog: PermanentProgress, wandType: string) {
   };
 }
 
+// (Zone unlock state is read inline from progress.unlockedZones in StartScreen)
+
 export function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const engineRef = useRef<GameEngine | null>(null);
@@ -55,6 +57,9 @@ export function GameCanvas() {
     elitesKilled: number;
     maxCombo: number;
     skillsCount: number;
+    zoneCleared: 'crypt' | 'void' | 'abyss' | null;
+    nextZoneUnlocked: 'crypt' | 'void' | 'abyss' | null;
+    isTrueVictory: boolean;
   } | null>(null);
   const [progress, setProgress] = useState<PermanentProgress>(() =>
     loadProgress()
@@ -63,6 +68,8 @@ export function GameCanvas() {
   const [selectedWandType, setSelectedWandType] = useState<string>(
     () => loadProgress().unlockedWandTypes[0] || 'Bone Wand'
   );
+  // ZONE SYSTEM: selected zone for next run (defaults to Crypt, always unlocked)
+  const [selectedZone, setSelectedZone] = useState<'crypt' | 'void' | 'abyss'>('crypt');
 
   // Initialize engine on mount
   useEffect(() => {
@@ -89,7 +96,7 @@ export function GameCanvas() {
           // Re-load FRESH progress from localStorage (prog closure may be stale
           // if player bought Crypt Hub upgrades after mount)
           const fresh = loadProgress();
-          const updated: PermanentProgress = {
+          let updated: PermanentProgress = {
             ...fresh,
             soulShards: fresh.soulShards + r.soulsCollected,
             totalSouls: fresh.totalSouls + r.soulsCollected,
@@ -97,6 +104,10 @@ export function GameCanvas() {
             bossesDefeated: fresh.bossesDefeated + r.bossesDefeated,
             highestRoom: Math.max(fresh.highestRoom, r.roomsCleared),
           };
+          // ZONE SYSTEM: unlock next zone if zone was cleared
+          if (r.nextZoneUnlocked) {
+            updated = unlockZone(updated, r.nextZoneUnlocked);
+          }
           // persist immediately (auto-save)
           try {
             localStorage.setItem('grimwick_save_v1', JSON.stringify(updated));
@@ -106,25 +117,8 @@ export function GameCanvas() {
           setProgress(updated);
         },
       },
-      {
-        healthBonus: prog.upgrades.startHealth,
-        wandPowerBonus: prog.upgrades.wandPower,
-        soulGainBonus: prog.upgrades.soulGain,
-        minionPowerBonus: prog.upgrades.minionPower,
-        moveSpeedBonus: prog.upgrades.moveSpeed,
-        relicLuck: prog.upgrades.relicLuck,
-        wandType: selectedWandType,
-        startingSouls: prog.upgrades.startingSouls,
-        iframeBonus: prog.upgrades.iframeDuration,
-        pickupRangeBonus: prog.upgrades.pickupRange,
-        critChanceBonus: prog.upgrades.critChance,
-        fireRateBonus: prog.upgrades.fireRate,
-        projectileSpeedBonus: prog.upgrades.projectileSpeed,
-        extraLives: prog.upgrades.extraLife,
-        eliteSoulBonus: prog.upgrades.eliteSoulBonus,
-        startingRelicChance: prog.upgrades.startingRelic,
-        soulMeterReduction: prog.upgrades.soulMeterSize,
-      }
+      buildBonuses(prog, selectedWandType),
+      selectedZone
     );
     engineRef.current = engine;
     engine.start();
@@ -153,9 +147,11 @@ export function GameCanvas() {
     // update wand type and bonuses
     const prog = loadProgress();
     engine.permanentBonuses = buildBonuses(prog, selectedWandType);
+    // ZONE SYSTEM: set the current zone before starting the run
+    engine.currentZone = selectedZone;
     engine.startRun();
     setShowCrypt(false);
-  }, [selectedWandType]);
+  }, [selectedWandType, selectedZone]);
 
   // QOL: Global R hotkey — Restart from death/pause, or Reroll in upgrade/chest screen
   useEffect(() => {
@@ -229,6 +225,7 @@ export function GameCanvas() {
         minions: 0,
         maxMinions: 0,
         room: 1,
+        zone: 'crypt' as const,
         wave: '1/2',
         skills: [],
         relics: [],
@@ -269,6 +266,9 @@ export function GameCanvas() {
             onOpenCrypt={handleOpenCrypt}
             wandType={selectedWandType}
             onWandTypeChange={setSelectedWandType}
+            selectedZone={selectedZone}
+            onZoneChange={setSelectedZone}
+            unlockedZones={progress.unlockedZones}
           />
         )}
 

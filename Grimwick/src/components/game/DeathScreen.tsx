@@ -13,6 +13,9 @@ interface Props {
     elitesKilled: number;
     maxCombo: number;
     skillsCount: number;
+    zoneCleared: 'crypt' | 'void' | 'abyss' | null;
+    nextZoneUnlocked: 'crypt' | 'void' | 'abyss' | null;
+    isTrueVictory: boolean;
   };
   onReturn: () => void;
   onRestart: () => void;
@@ -24,8 +27,31 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+const ZONE_VICTORY_LABELS: Record<'crypt' | 'void' | 'abyss', { name: string; subtitle: string; color: string; unlockedText: string }> = {
+  crypt: {
+    name: 'THE CRYPT CLEARED',
+    subtitle: 'The Bone Dragon lies shattered.',
+    color: '#a08060',
+    unlockedText: '⚔ THE VOID DEPTHS UNLOCKED',
+  },
+  void: {
+    name: 'THE VOID DEPTHS CLEARED',
+    subtitle: 'The Void Leviathan falls into nothing.',
+    color: '#a040ff',
+    unlockedText: '⚔ THE ABYSSAL THRONE UNLOCKED',
+  },
+  abyss: {
+    name: 'THE ABYSSAL THRONE CLAIMED',
+    subtitle: 'The Lich King falls. His throne is yours.',
+    color: '#ff4040',
+    unlockedText: '★ TRUE VICTORY — You are the Undead Lord',
+  },
+};
+
 export function DeathScreen({ result, onReturn, onRestart }: Props) {
   const victory = result.reachedVictory;
+  const isTrueVictory = result.isTrueVictory;
+  const zoneInfo = result.zoneCleared ? ZONE_VICTORY_LABELS[result.zoneCleared] : null;
   // QOL: derive efficiency stats
   const dps =
     result.timeSurvived > 0
@@ -39,7 +65,9 @@ export function DeathScreen({ result, onReturn, onRestart }: Props) {
     <div
       className={`absolute inset-0 flex flex-col items-center justify-center font-mono text-white ${
         victory
-          ? 'bg-gradient-to-b from-amber-950/95 via-black/95 to-purple-950/95'
+          ? isTrueVictory
+            ? 'bg-gradient-to-b from-amber-950/95 via-black/95 to-amber-950/95'
+            : 'bg-gradient-to-b from-amber-950/95 via-black/95 to-purple-950/95'
           : 'bg-gradient-to-b from-rose-950/95 via-black/95 to-purple-950/95'
       }`}
     >
@@ -49,13 +77,19 @@ export function DeathScreen({ result, onReturn, onRestart }: Props) {
             victory ? 'text-amber-400' : 'text-rose-400'
           }`}
         >
-          {victory ? '★ The Crypt is Yours ★' : 'Your Bones Fall'}
+          {victory
+            ? zoneInfo
+              ? zoneInfo.name
+              : '★ Victory ★'
+            : 'Your Bones Fall'}
         </div>
         <h1
           className="text-7xl font-black tracking-tight"
           style={{
             background: victory
-              ? 'linear-gradient(180deg,#ffe080,#c08020)'
+              ? isTrueVictory
+                ? 'linear-gradient(180deg,#ffe080,#ffd040,#c08020)'
+                : 'linear-gradient(180deg,#ffe080,#c08020)'
               : 'linear-gradient(180deg,#ff8080,#a02040)',
             WebkitBackgroundClip: 'text',
             backgroundClip: 'text',
@@ -65,13 +99,27 @@ export function DeathScreen({ result, onReturn, onRestart }: Props) {
               : 'drop-shadow(0 0 24px rgba(255,80,80,0.7))',
           }}
         >
-          {victory ? 'VICTORY' : 'YOU DIED'}
+          {victory ? (isTrueVictory ? 'TRUE VICTORY' : 'ZONE CLEARED') : 'YOU DIED'}
         </h1>
         <div className="text-zinc-400 text-sm mt-3 italic max-w-md">
-          {victory
-            ? 'The Lich King falls. His throne is yours. You have conquered the Crypt, the Void, and the Abyss itself — you are the true Undead Lord.'
+          {victory && zoneInfo
+            ? isTrueVictory
+              ? 'The Lich King falls. His throne is yours. You have conquered the Crypt, the Void, and the Abyss itself — you are the true Undead Lord.'
+              : zoneInfo.subtitle + ' A new zone awaits...'
             : 'Your bones return to the crypt. But the souls you gathered will make you stronger next time.'}
         </div>
+        {/* Zone unlock banner */}
+        {victory && zoneInfo && (
+          <div
+            className="mt-4 text-sm font-bold tracking-widest animate-pulse"
+            style={{
+              color: zoneInfo.color,
+              textShadow: `0 0 12px ${zoneInfo.color}`,
+            }}
+          >
+            {zoneInfo.unlockedText}
+          </div>
+        )}
       </div>
 
       {/* QOL: Comprehensive run stats — 2 panels */}

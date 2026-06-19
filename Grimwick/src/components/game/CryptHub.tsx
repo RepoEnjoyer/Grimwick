@@ -161,7 +161,7 @@ export function CryptHub({ progress, onClose, onProgressChange }: Props) {
           <UnlockCard
             title="Dungeon Zones"
             items={progress.unlockedZones}
-            hint="Future update"
+            hint="Unlock by clearing previous zone's final boss"
           />
         </div>
 

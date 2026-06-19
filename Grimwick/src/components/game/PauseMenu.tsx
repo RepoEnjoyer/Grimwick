@@ -12,6 +12,7 @@ interface BuildSummary {
   minions: number;
   maxMinions: number;
   room: number;
+  zone: 'crypt' | 'void' | 'abyss';
   wave: string;
   skills: string[];
   relics: { id: string; name: string; icon: string; description: string }[];
@@ -22,6 +23,12 @@ interface BuildSummary {
   elitesKilled: number;
   maxCombo: number;
 }
+
+const ZONE_LABELS: Record<'crypt' | 'void' | 'abyss', string> = {
+  crypt: 'THE CRYPT',
+  void: 'THE VOID DEPTHS',
+  abyss: 'THE ABYSSAL THRONE',
+};
 
 interface Props {
   getSummary: () => BuildSummary;
@@ -157,7 +164,7 @@ export function PauseMenu({ getSummary, onResume, onRestart, onReturnToMenu }: P
 
         {/* Build summary */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-5">
-          <StatCard label="Room" value={summary.room} color="text-amber-300" />
+          <StatCard label="Room" value={`${summary.room} (${ZONE_LABELS[summary.zone].split(' ').slice(-1)[0]})`} color="text-amber-300" />
           <StatCard label="Wave" value={summary.wave} color="text-amber-200" />
           <StatCard label="HP" value={`${summary.hp}/${summary.maxHp}`} color="text-rose-300" />
           <StatCard label="Souls" value={summary.souls} color="text-purple-300" />

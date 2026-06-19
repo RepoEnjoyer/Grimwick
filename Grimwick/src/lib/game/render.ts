@@ -1742,10 +1742,16 @@ function drawEnemyProjectile(
 // ---------- particles ----------
 function drawParticle(ctx: CanvasRenderingContext2D, p: Particle) {
   const a = Math.max(0, p.life / p.maxLife);
+  // ===== PERFORMANCE: skip off-screen particles =====
+  if (p.x < -20 || p.x > GAME_W + 20 || p.y < -20 || p.y > GAME_H + 20) return;
   ctx.save();
   ctx.globalAlpha = a;
   if (p.kind === 'spark' || p.kind === 'magic' || p.kind === 'soul') {
-    glowCircle(ctx, p.x, p.y, p.radius, p.color, 8);
+    // PERFORMANCE: use simple fill instead of expensive shadowBlur for most particles
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+    ctx.fill();
   } else if (p.kind === 'bone') {
     ctx.fillStyle = p.color;
     ctx.translate(p.x, p.y);
@@ -1753,10 +1759,16 @@ function drawParticle(ctx: CanvasRenderingContext2D, p: Particle) {
     ctx.fillRect(-p.radius, -1, p.radius * 2, 2);
   } else if (p.kind === 'smoke') {
     ctx.globalAlpha = a * 0.5;
-    glowCircle(ctx, p.x, p.y, p.radius * 2, p.color, 4);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius * 2, 0, Math.PI * 2);
+    ctx.fill();
   } else if (p.kind === 'frost') {
-    // frost: small crystal sparkle
-    glowCircle(ctx, p.x, p.y, p.radius, p.color, 6);
+    // frost: small crystal sparkle (no glow for performance)
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+    ctx.fill();
     ctx.strokeStyle = p.color;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -1766,9 +1778,18 @@ function drawParticle(ctx: CanvasRenderingContext2D, p: Particle) {
     ctx.lineTo(p.x, p.y + p.radius);
     ctx.stroke();
   } else if (p.kind === 'meteor_trail') {
-    // fiery trail
-    glowCircle(ctx, p.x, p.y, p.radius, p.color, 10);
-    glowCircle(ctx, p.x, p.y, p.radius * 0.5, '#ffd040', 6);
+    // fiery trail (simplified for perf)
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#ffd040';
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (p.kind === 'lightning') {
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
   }
   ctx.restore();
 }

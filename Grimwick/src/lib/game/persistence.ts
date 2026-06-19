@@ -248,6 +248,21 @@ export function addSoulShards(
   return newProgress;
 }
 
+// ZONE SYSTEM: unlock a new zone after defeating the previous zone's final boss
+export function unlockZone(
+  progress: PermanentProgress,
+  zone: 'crypt' | 'void' | 'abyss'
+): PermanentProgress {
+  const zoneName = zone.charAt(0).toUpperCase() + zone.slice(1);
+  if (progress.unlockedZones.includes(zoneName)) return progress;
+  const newProgress: PermanentProgress = {
+    ...progress,
+    unlockedZones: [...progress.unlockedZones, zoneName],
+  };
+  saveProgress(newProgress);
+  return newProgress;
+}
+
 export function recordRun(
   progress: PermanentProgress,
   result: {

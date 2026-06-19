@@ -1005,13 +1005,13 @@ export const UPGRADES: Upgrade[] = [
   {
     id: 'blessed_by_god',
     name: 'I AM BLESSED BY GOD',
-    description: 'DIVINE: 12% chance for non-boss enemies to drop golden chests containing RARE+ skills!',
+    description: 'DIVINE: 1% chance for non-boss enemies to drop golden chests containing RARE+ skills!',
     path: 'generic',
     rarity: 'epic',
     icon: '✨',
     requires: (p) => !p.skills.has('blessed_by_god'),
     apply: (p) => {
-      p.blessedByGodLevel = 3; // max power from one pickup
+      p.blessedByGodLevel = 1; // 1% chest drop rate
       p.skills.add('blessed_by_god');
     },
   },
