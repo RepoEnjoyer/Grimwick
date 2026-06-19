@@ -825,7 +825,7 @@ export const UPGRADES: Upgrade[] = [
   {
     id: 'ricochet',
     name: 'Ricochet',
-    description: 'Wand shots bounce off walls (+1 bounce per level).',
+    description: 'Wand shots bounce off walls (+1 bounce per level). Without this, shots disappear on wall contact.',
     path: 'wand',
     rarity: 'rare',
     icon: '↺',
@@ -1569,6 +1569,43 @@ export const ENEMY_TEMPLATES: Record<EnemyKind, EnemyTemplate> = {
     color: '#d0c0a0',
     soulValue: 5,
   },
+  // ===== VOID STAGE ENEMIES (Stage 2) =====
+  void_horror: {
+    hp: 70,
+    damage: 18,
+    speed: 70,
+    radius: 16,
+    attackInterval: 1.5,
+    color: '#a040ff',
+    soulValue: 8,
+  },
+  void_wraith: {
+    hp: 50,
+    damage: 20,
+    speed: 130,
+    radius: 14,
+    attackInterval: 1.2,
+    color: '#6080ff',
+    soulValue: 7,
+  },
+  void_leviathan: {
+    hp: 200,
+    damage: 26,
+    speed: 60,
+    radius: 24,
+    attackInterval: 1.8,
+    color: '#40c0a0',
+    soulValue: 14,
+  },
+  void_reaper: {
+    hp: 90,
+    damage: 24,
+    speed: 150,
+    radius: 15,
+    attackInterval: 0.9,
+    color: '#ff40c0',
+    soulValue: 10,
+  },
 };
 
 // ===== ELITE AFFIX SYSTEM =====
@@ -1798,17 +1835,68 @@ export const BOSS_TEMPLATES: Record<BossKind, BossTemplate> = {
     color: '#d8c8a8',
     soulValue: 220,
   },
+  // ===== VOID & ABYSS BOSSES =====
+  void_reaper_king: {
+    name: 'The Void Reaper King',
+    hp: 2800,
+    damage: 48,
+    speed: 130,
+    radius: 32,
+    color: '#a040ff',
+    soulValue: 280,
+  },
+  void_leviathan: {
+    name: 'The Void Leviathan',
+    hp: 4200,
+    damage: 52,
+    speed: 60,
+    radius: 52,
+    color: '#40c0a0',
+    soulValue: 360,
+  },
+  lich_king: {
+    name: 'The Lich King',
+    hp: 6500,
+    damage: 60,
+    speed: 80,
+    radius: 40,
+    color: '#c0c0ff',
+    soulValue: 500,
+  },
 };
 
 // Boss spawn schedule (which room # spawns which boss)
+// Stage 1 (Crypt): rooms 1-16 — original bosses
+// Stage 2 (Void): rooms 17-24 — void bosses, all enemies are elites
+// Stage 3 (Abyss): rooms 25+ — boss rush, limited vision, lich_king finale
 export const BOSS_ROOM_SCHEDULE: { room: number; boss: BossKind }[] = [
+  // Stage 1: Crypt
   { room: 4, boss: 'bell_knight' },
   { room: 6, boss: 'wraith_queen' },
   { room: 8, boss: 'twins' },
   { room: 12, boss: 'sun_priest' },
   { room: 14, boss: 'bone_colossus' },
   { room: 16, boss: 'bone_dragon' },
+  // Stage 2: Void
+  { room: 18, boss: 'void_reaper_king' },
+  { room: 22, boss: 'void_leviathan' },
+  // Stage 3: Abyss
+  { room: 26, boss: 'lich_king' },
 ];
+
+// Helper: get the current stage based on room number
+export function getStage(room: number): 'crypt' | 'void' | 'abyss' {
+  if (room >= 25) return 'abyss';
+  if (room >= 17) return 'void';
+  return 'crypt';
+}
+
+// Helper: stage names for UI
+export const STAGE_NAMES: Record<'crypt' | 'void' | 'abyss', { name: string; subtitle: string; color: string }> = {
+  crypt: { name: 'THE CRYPT', subtitle: 'Stage 1', color: '#a08060' },
+  void: { name: 'THE VOID DEPTHS', subtitle: 'Stage 2', color: '#a040ff' },
+  abyss: { name: 'THE ABYSSAL THRONE', subtitle: 'Stage 3', color: '#ff4040' },
+};
 
 // ---------- Wave composition ----------
 // Returns enemy kinds to spawn for a given room/wave.
@@ -1819,15 +1907,30 @@ export function generateWave(
   blackCandle: boolean
 ): EnemyKind[] {
   const out: EnemyKind[] = [];
-  const base = 4 + room * 1.5 + wave * 1.5;
+  // Stage 2/3 have significantly more enemies per wave
+  const stageMult = room >= 25 ? 1.6 : room >= 17 ? 1.35 : 1;
+  const base = (4 + room * 1.5 + wave * 1.5) * stageMult;
   let count = Math.floor(base);
   if (blackCandle) count = Math.floor(count * 1.3);
 
   // unlock enemy variety by room
-  const pool: EnemyKind[] = ['knight', 'robber', 'slime'];
+  let pool: EnemyKind[] = ['knight', 'robber', 'slime'];
   if (room >= 2) pool.push('priest', 'ghost', 'cultist');
   if (room >= 4) pool.push('mage', 'gargoyle', 'banshee');
   if (room >= 6) pool.push('paladin', 'bonebeast');
+
+  // Stage 2 (Void): replace pool with void enemies
+  if (room >= 17 && room < 25) {
+    pool = ['void_horror', 'void_wraith', 'void_reaper'];
+    if (room >= 19) pool.push('void_leviathan');
+    // occasionally mix in stronger crypt enemies for variety
+    if (Math.random() < 0.3) pool.push('bonebeast', 'banshee');
+  }
+
+  // Stage 3 (Abyss): mixed hardest enemies + guaranteed elites
+  if (room >= 25) {
+    pool = ['void_horror', 'void_wraith', 'void_reaper', 'void_leviathan', 'bonebeast', 'paladin', 'banshee'];
+  }
 
   for (let i = 0; i < count; i++) {
     out.push(pool[Math.floor(Math.random() * pool.length)]);
@@ -1835,14 +1938,23 @@ export function generateWave(
 
   // last wave gets a tougher mix
   if (wave === totalWaves - 1 && room >= 3) {
-    out.push('gargoyle', 'paladin');
-    if (room >= 5) out.push('bonebeast', 'banshee');
+    if (room < 17) {
+      out.push('gargoyle', 'paladin');
+      if (room >= 5) out.push('bonebeast', 'banshee');
+    } else {
+      // Void/Abyss last wave: heavy hitters
+      out.push('void_leviathan', 'void_reaper');
+      if (room >= 20) out.push('void_leviathan');
+    }
   }
   return out;
 }
 
 // Returns total waves for a room
 export function wavesPerRoom(room: number): number {
+  // Stage 2/3 have more waves per room
+  if (room >= 25) return Math.min(7, 4 + Math.floor((room - 25) / 3));
+  if (room >= 17) return Math.min(6, 3 + Math.floor((room - 17) / 3));
   return Math.min(5, 2 + Math.floor(room / 3));
 }
 

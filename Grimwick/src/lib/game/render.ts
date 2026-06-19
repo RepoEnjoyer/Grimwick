@@ -1,6 +1,6 @@
 // Canvas rendering: dark fantasy pixel-art-ish style with glow effects
 import { GameEngine, GAME_W, GAME_H } from './engine';
-import { ELITE_AFFIXES } from './content';
+import { ELITE_AFFIXES, getStage } from './content';
 import type {
   BlackHole,
   BoneWall,
@@ -50,8 +50,8 @@ export function drawGame(engine: GameEngine) {
   const t = engine.gameTime;
   ctx.clearRect(0, 0, GAME_W, GAME_H);
 
-  // ===== background: dungeon floor =====
-  drawFloor(ctx, t);
+  // ===== background: dungeon floor (stage-themed) =====
+  drawFloor(ctx, t, engine);
 
   // ===== cursed grounds (under entities) =====
   for (const cg of engine.cursedGrounds) {
@@ -229,7 +229,19 @@ export function drawGame(engine: GameEngine) {
 }
 
 // ---------- background ----------
-function drawFloor(ctx: CanvasRenderingContext2D, t: number) {
+function drawFloor(ctx: CanvasRenderingContext2D, t: number, engine: GameEngine) {
+  const stage = getStage(engine.roomNumber);
+
+  if (stage === 'void') {
+    drawVoidFloor(ctx, t);
+    return;
+  }
+  if (stage === 'abyss') {
+    drawAbyssFloor(ctx, t, engine);
+    return;
+  }
+
+  // ===== STAGE 1: CRYPT (default dark stone dungeon) =====
   // base dark stone gradient
   const grad = ctx.createRadialGradient(
     GAME_W / 2,
@@ -323,6 +335,147 @@ function drawFloor(ctx: CanvasRenderingContext2D, t: number) {
     ctx.fill();
     ctx.restore();
   }
+}
+
+// ===== STAGE 2: VOID DEPTHS — cosmic void with stars and floating runes =====
+function drawVoidFloor(ctx: CanvasRenderingContext2D, t: number) {
+  // deep purple/black gradient
+  const grad = ctx.createRadialGradient(
+    GAME_W / 2,
+    GAME_H / 2,
+    50,
+    GAME_W / 2,
+    GAME_H / 2,
+    GAME_W * 0.8
+  );
+  grad.addColorStop(0, '#1a0030');
+  grad.addColorStop(0.5, '#0a0018');
+  grad.addColorStop(1, '#000005');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, GAME_W, GAME_H);
+
+  // Stars (deterministic via Math.sin patterns so they don't flicker)
+  ctx.save();
+  for (let i = 0; i < 80; i++) {
+    const sx = ((i * 173) % GAME_W);
+    const sy = ((i * 257) % GAME_H);
+    const twinkle = 0.4 + Math.sin(t * 2 + i) * 0.3;
+    ctx.globalAlpha = twinkle * 0.7;
+    ctx.fillStyle = i % 5 === 0 ? '#ff80ff' : i % 7 === 0 ? '#80c0ff' : '#ffffff';
+    const sz = i % 13 === 0 ? 2 : 1;
+    ctx.fillRect(sx, sy, sz, sz);
+  }
+  ctx.restore();
+
+  // floating void runes (large, slow rotation)
+  ctx.save();
+  ctx.globalAlpha = 0.12;
+  ctx.strokeStyle = '#a040ff';
+  ctx.lineWidth = 2;
+  for (let i = 0; i < 3; i++) {
+    const cx = GAME_W * (0.2 + i * 0.3);
+    const cy = GAME_H * (0.3 + (i % 2) * 0.4);
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(t * 0.1 * (i + 1));
+    ctx.beginPath();
+    ctx.arc(0, 0, 60 + i * 20, 0, Math.PI * 2);
+    ctx.stroke();
+    // inner triangle
+    for (let j = 0; j < 3; j++) {
+      const a = (j / 3) * Math.PI * 2;
+      const r = 40 + i * 15;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r, Math.sin(a) * r);
+      ctx.lineTo(Math.cos(a + 2.094) * r, Math.sin(a + 2.094) * r);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+  ctx.restore();
+
+  // pulsing void rift in center
+  ctx.save();
+  const pulse = 0.4 + Math.sin(t * 1.5) * 0.2;
+  ctx.globalAlpha = pulse * 0.3;
+  const rg = ctx.createRadialGradient(GAME_W / 2, GAME_H / 2, 0, GAME_W / 2, GAME_H / 2, 300);
+  rg.addColorStop(0, '#ff40ff');
+  rg.addColorStop(0.5, '#a040ff');
+  rg.addColorStop(1, 'rgba(40,0,80,0)');
+  ctx.fillStyle = rg;
+  ctx.beginPath();
+  ctx.arc(GAME_W / 2, GAME_H / 2, 300, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ===== STAGE 3: ABYSSAL THRONE — pitch black with limited vision =====
+function drawAbyssFloor(ctx: CanvasRenderingContext2D, t: number, engine: GameEngine) {
+  // pure black background
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, GAME_W, GAME_H);
+
+  // distant red glow at edges (hellish abyss feel)
+  ctx.save();
+  const edgeGlow = ctx.createRadialGradient(
+    GAME_W / 2,
+    GAME_H / 2,
+    GAME_W * 0.3,
+    GAME_W / 2,
+    GAME_H / 2,
+    GAME_W * 0.7
+  );
+  edgeGlow.addColorStop(0, 'rgba(40,0,0,0)');
+  edgeGlow.addColorStop(0.7, 'rgba(80,10,0,0.2)');
+  edgeGlow.addColorStop(1, 'rgba(150,20,0,0.4)');
+  ctx.fillStyle = edgeGlow;
+  ctx.fillRect(0, 0, GAME_W, GAME_H);
+  ctx.restore();
+
+  // floating ember particles (deterministic)
+  ctx.save();
+  for (let i = 0; i < 30; i++) {
+    const ex = ((i * 211) % GAME_W);
+    const ey = ((i * 311) % GAME_H + t * 20 * (i % 3 + 1)) % GAME_H;
+    const flicker = 0.4 + Math.sin(t * 3 + i) * 0.3;
+    ctx.globalAlpha = flicker * 0.6;
+    ctx.fillStyle = i % 4 === 0 ? '#ffd040' : '#ff4020';
+    ctx.fillRect(ex, ey, 2, 2);
+  }
+  ctx.restore();
+
+  // vision limiter: dark mask around player (only see ~280px radius)
+  // Skip during boss fights so player can see the boss
+  if (!engine.currentBoss) {
+    ctx.save();
+    const p = engine.player;
+    const vg = ctx.createRadialGradient(p.x, p.y, 100, p.x, p.y, 320);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(0.7, 'rgba(0,0,0,0.5)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.92)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, GAME_W, GAME_H);
+    ctx.restore();
+  }
+
+  // throne silhouette in background (faint)
+  ctx.save();
+  ctx.globalAlpha = 0.15;
+  ctx.fillStyle = '#400000';
+  // throne back
+  ctx.fillRect(GAME_W / 2 - 80, GAME_H / 2 - 120, 160, 240);
+  // spires
+  ctx.beginPath();
+  ctx.moveTo(GAME_W / 2 - 80, GAME_H / 2 - 120);
+  ctx.lineTo(GAME_W / 2 - 100, GAME_H / 2 - 180);
+  ctx.lineTo(GAME_W / 2 - 60, GAME_H / 2 - 120);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(GAME_W / 2 + 80, GAME_H / 2 - 120);
+  ctx.lineTo(GAME_W / 2 + 100, GAME_H / 2 - 180);
+  ctx.lineTo(GAME_W / 2 + 60, GAME_H / 2 - 120);
+  ctx.fill();
+  ctx.restore();
 }
 
 // ---------- cursed ground ----------
@@ -936,6 +1089,151 @@ function drawEnemy(ctx: CanvasRenderingContext2D, e: Enemy, t: number) {
       ctx.strokeRect(-16, -10, 32, 16);
       break;
     }
+    // ===== VOID STAGE ENEMIES =====
+    case 'void_horror': {
+      // Floating eldritch eye with tentacles
+      const float = Math.sin(t * 3) * 2;
+      ctx.save();
+      ctx.translate(0, float);
+      // tentacles
+      ctx.strokeStyle = flash ? '#fff' : '#6020a0';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 6; i++) {
+        const ang = (i / 6) * Math.PI * 2 + Math.PI / 2;
+        const len = 10 + Math.sin(t * 4 + i) * 3;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(ang) * 8, Math.sin(ang) * 8);
+        ctx.lineTo(Math.cos(ang) * (8 + len), Math.sin(ang) * (8 + len));
+        ctx.stroke();
+      }
+      // eyeball
+      ctx.fillStyle = flash ? '#fff' : '#1a0030';
+      ctx.beginPath();
+      ctx.arc(0, 0, 11, 0, Math.PI * 2);
+      ctx.fill();
+      // iris
+      ctx.fillStyle = flash ? '#fff' : e.color;
+      ctx.beginPath();
+      ctx.arc(0, 0, 7, 0, Math.PI * 2);
+      ctx.fill();
+      // pupil (tracks player direction roughly)
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.arc(0, 0, 3, 0, Math.PI * 2);
+      ctx.fill();
+      // glow
+      glowCircle(ctx, 0, 0, 4, '#ff80ff', 12);
+      ctx.restore();
+      break;
+    }
+    case 'void_wraith': {
+      // Phasing tattered ghost
+      const alpha = e.phaseActive ? 0.95 : 0.3;
+      ctx.globalAlpha = alpha;
+      // flowing tattered cloak
+      ctx.fillStyle = flash ? '#fff' : e.color;
+      const wave = Math.sin(t * 4) * 3;
+      ctx.beginPath();
+      ctx.moveTo(-10, -8);
+      ctx.lineTo(-12 + wave, 14);
+      ctx.lineTo(-6, 10);
+      ctx.lineTo(0, 14);
+      ctx.lineTo(6, 10);
+      ctx.lineTo(12 - wave, 14);
+      ctx.lineTo(10, -8);
+      ctx.closePath();
+      ctx.fill();
+      // hood
+      ctx.fillStyle = flash ? '#fff' : '#202060';
+      ctx.beginPath();
+      ctx.arc(0, -10, 7, 0, Math.PI * 2);
+      ctx.fill();
+      // glowing eyes
+      glowCircle(ctx, -3, -10, 1.5, '#80a0ff', 8);
+      glowCircle(ctx, 3, -10, 1.5, '#80a0ff', 8);
+      ctx.globalAlpha = 1;
+      break;
+    }
+    case 'void_leviathan': {
+      // Huge serpent body with segments
+      ctx.fillStyle = flash ? '#fff' : e.color;
+      // main body coil
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 22, 14, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // segment lines
+      ctx.strokeStyle = '#207060';
+      ctx.lineWidth = 1.5;
+      for (let i = -2; i <= 2; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * 6, -12);
+        ctx.lineTo(i * 6, 12);
+        ctx.stroke();
+      }
+      // head
+      ctx.fillStyle = flash ? '#fff' : '#60e0c0';
+      ctx.beginPath();
+      ctx.ellipse(20, 0, 10, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // eye
+      glowCircle(ctx, 24, -3, 2.5, '#ff4040', 10);
+      // teeth
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(26, 0, 2, 3);
+      ctx.fillRect(28, 1, 2, 3);
+      // fins
+      ctx.fillStyle = flash ? '#fff' : '#40c0a0';
+      ctx.beginPath();
+      ctx.moveTo(-5, -14);
+      ctx.lineTo(-12, -22);
+      ctx.lineTo(2, -14);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(-5, 14);
+      ctx.lineTo(-12, 22);
+      ctx.lineTo(2, 14);
+      ctx.fill();
+      break;
+    }
+    case 'void_reaper': {
+      // Hooded scythe-wielder
+      ctx.fillStyle = flash ? '#fff' : e.color;
+      // robe
+      ctx.beginPath();
+      ctx.moveTo(-10, 14);
+      ctx.lineTo(10, 14);
+      ctx.lineTo(8, -4);
+      ctx.lineTo(-8, -4);
+      ctx.closePath();
+      ctx.fill();
+      // hood
+      ctx.fillStyle = flash ? '#fff' : '#600040';
+      ctx.beginPath();
+      ctx.arc(0, -8, 8, 0, Math.PI * 2);
+      ctx.fill();
+      // shadow face
+      ctx.fillStyle = '#000';
+      ctx.fillRect(-5, -10, 10, 5);
+      // glowing eyes
+      glowCircle(ctx, -3, -8, 1.5, '#ff40c0', 10);
+      glowCircle(ctx, 3, -8, 1.5, '#ff40c0', 10);
+      // scythe
+      ctx.strokeStyle = '#a0a0a0';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(10, 14);
+      ctx.lineTo(14, -14);
+      ctx.stroke();
+      // blade
+      ctx.fillStyle = flash ? '#fff' : '#ff80ff';
+      ctx.beginPath();
+      ctx.moveTo(14, -14);
+      ctx.quadraticCurveTo(22, -16, 20, -8);
+      ctx.lineTo(14, -10);
+      ctx.closePath();
+      ctx.fill();
+      break;
+    }
   }
 
   // boss extras
@@ -1076,6 +1374,181 @@ function drawBossExtras(
     ctx.fillStyle = '#fff';
     for (let i = 0; i < 5; i++) {
       ctx.fillRect(-10 + i * 5, -e.radius + 2, 3, 4);
+    }
+    ctx.restore();
+  } else if (e.bossKind === 'void_reaper_king') {
+    // Void Reaper King — massive hooded reaper with twin scythes and void aura
+    ctx.save();
+    // void aura
+    ctx.globalAlpha = 0.4;
+    glowCircle(ctx, 0, 0, e.radius + 20, '#a040ff', 30);
+    ctx.globalAlpha = 1;
+    // flowing void cloak (animated)
+    ctx.fillStyle = '#400060';
+    const wave = Math.sin(t * 3) * 5;
+    ctx.beginPath();
+    ctx.moveTo(-e.radius, e.radius);
+    ctx.quadraticCurveTo(-e.radius - 10 + wave, 0, -e.radius * 0.8, -e.radius * 0.5);
+    ctx.lineTo(e.radius * 0.8, -e.radius * 0.5);
+    ctx.quadraticCurveTo(e.radius + 10 - wave, 0, e.radius, e.radius);
+    ctx.closePath();
+    ctx.fill();
+    // hood
+    ctx.fillStyle = '#200040';
+    ctx.beginPath();
+    ctx.arc(0, -e.radius * 0.5, e.radius * 0.8, 0, Math.PI * 2);
+    ctx.fill();
+    // shadow face
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.arc(0, -e.radius * 0.5, e.radius * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    // glowing purple eyes
+    glowCircle(ctx, -8, -e.radius * 0.5, 3, '#ff40ff', 14);
+    glowCircle(ctx, 8, -e.radius * 0.5, 3, '#ff40ff', 14);
+    // twin scythes (X pattern)
+    ctx.strokeStyle = '#c0c0c0';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(-e.radius, e.radius);
+    ctx.lineTo(e.radius * 0.5, -e.radius);
+    ctx.moveTo(e.radius, e.radius);
+    ctx.lineTo(-e.radius * 0.5, -e.radius);
+    ctx.stroke();
+    // scythe blades
+    ctx.fillStyle = '#ff80ff';
+    ctx.beginPath();
+    ctx.moveTo(e.radius * 0.5, -e.radius);
+    ctx.quadraticCurveTo(e.radius + 8, -e.radius - 8, e.radius * 0.7, -e.radius + 8);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(-e.radius * 0.5, -e.radius);
+    ctx.quadraticCurveTo(-e.radius - 8, -e.radius - 8, -e.radius * 0.7, -e.radius + 8);
+    ctx.fill();
+    // orbiting void orbs
+    for (let i = 0; i < 5; i++) {
+      const ang = t * 2 + (i / 5) * Math.PI * 2;
+      const ox = Math.cos(ang) * (e.radius + 25);
+      const oy = Math.sin(ang) * (e.radius + 25);
+      glowCircle(ctx, ox, oy, 4, '#a040ff', 12);
+    }
+    ctx.restore();
+  } else if (e.bossKind === 'void_leviathan') {
+    // Void Leviathan — massive coiled serpent with multiple segments
+    ctx.save();
+    // body coil segments (animated slithering)
+    const phase = e.bossPhase ?? 1;
+    const segColor = phase >= 3 ? '#40ffc0' : phase >= 2 ? '#60e0c0' : '#40c0a0';
+    ctx.fillStyle = segColor;
+    for (let i = 0; i < 5; i++) {
+      const offset = Math.sin(t * 2 + i * 0.8) * 8;
+      const sx = -e.radius + i * (e.radius * 0.4);
+      const sy = offset;
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, 18 - i * 2, 14 - i * 1.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // huge head
+    ctx.fillStyle = phase >= 3 ? '#80ffe0' : '#60e0c0';
+    ctx.beginPath();
+    ctx.ellipse(e.radius * 0.6, 0, 22, 16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // glowing eyes
+    glowCircle(ctx, e.radius * 0.8, -5, 4, '#ff4040', 14);
+    glowCircle(ctx, e.radius * 0.8, 5, 4, '#ff4040', 14);
+    // fangs
+    ctx.fillStyle = '#fff';
+    ctx.beginPath();
+    ctx.moveTo(e.radius * 0.9, 8);
+    ctx.lineTo(e.radius * 0.95, 16);
+    ctx.lineTo(e.radius * 1.05, 8);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(e.radius * 0.9, -8);
+    ctx.lineTo(e.radius * 0.95, -16);
+    ctx.lineTo(e.radius * 1.05, -8);
+    ctx.fill();
+    // dorsal fin
+    ctx.fillStyle = segColor;
+    ctx.beginPath();
+    ctx.moveTo(-e.radius * 0.5, -16);
+    ctx.lineTo(-e.radius * 0.3, -28);
+    ctx.lineTo(0, -16);
+    ctx.fill();
+    // phase indicator: extra spikes if enraged
+    if (phase >= 3) {
+      ctx.fillStyle = '#ff4040';
+      for (let i = 0; i < 4; i++) {
+        const sx = -e.radius + i * (e.radius * 0.4);
+        ctx.beginPath();
+        ctx.moveTo(sx, -10);
+        ctx.lineTo(sx - 3, -20);
+        ctx.lineTo(sx + 3, -10);
+        ctx.fill();
+      }
+    }
+    ctx.restore();
+  } else if (e.bossKind === 'lich_king') {
+    // Lich King — ultimate skeletal mage with crown and floating shards
+    ctx.save();
+    const phase = e.bossPhase ?? 1;
+    // dark aura
+    ctx.globalAlpha = 0.5;
+    glowCircle(ctx, 0, 0, e.radius + 30, phase >= 2 ? '#ff80ff' : '#c0c0ff', 40);
+    ctx.globalAlpha = 1;
+    // ornate robe
+    ctx.fillStyle = phase >= 2 ? '#400060' : '#202040';
+    const wave = Math.sin(t * 2) * 3;
+    ctx.beginPath();
+    ctx.moveTo(-e.radius, e.radius);
+    ctx.quadraticCurveTo(-e.radius - 8 + wave, 0, -e.radius * 0.7, -e.radius * 0.4);
+    ctx.lineTo(e.radius * 0.7, -e.radius * 0.4);
+    ctx.quadraticCurveTo(e.radius + 8 - wave, 0, e.radius, e.radius);
+    ctx.closePath();
+    ctx.fill();
+    // gold trim
+    ctx.strokeStyle = '#ffd040';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // skull head
+    ctx.fillStyle = '#f0e8d0';
+    ctx.beginPath();
+    ctx.arc(0, -e.radius * 0.5, e.radius * 0.7, 0, Math.PI * 2);
+    ctx.fill();
+    // crown (golden with gems)
+    ctx.fillStyle = '#ffd040';
+    for (let i = 0; i < 5; i++) {
+      const ang = -Math.PI + (i / 4) * Math.PI;
+      const cx = Math.cos(ang) * (e.radius * 0.7);
+      const cy = Math.sin(ang) * (e.radius * 0.7) - e.radius * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(cx - 4, cy + 6);
+      ctx.lineTo(cx, cy - 8);
+      ctx.lineTo(cx + 4, cy + 6);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // gems on crown
+    glowCircle(ctx, 0, -e.radius - 4, 3, '#ff4040', 10);
+    glowCircle(ctx, -8, -e.radius - 2, 2, '#40c0ff', 8);
+    glowCircle(ctx, 8, -e.radius - 2, 2, '#40c0ff', 8);
+    // glowing eye sockets
+    ctx.fillStyle = '#000';
+    ctx.fillRect(-10, -e.radius * 0.6, 6, 6);
+    ctx.fillRect(4, -e.radius * 0.6, 6, 6);
+    glowCircle(ctx, -7, -e.radius * 0.5, 3, phase >= 2 ? '#ff80ff' : '#80a0ff', 14);
+    glowCircle(ctx, 7, -e.radius * 0.5, 3, phase >= 2 ? '#ff80ff' : '#80a0ff', 14);
+    // floating bone shards orbiting
+    for (let i = 0; i < 6; i++) {
+      const ang = t * 1.5 + (i / 6) * Math.PI * 2;
+      const ox = Math.cos(ang) * (e.radius + 20);
+      const oy = Math.sin(ang) * (e.radius + 20);
+      ctx.fillStyle = '#e0d8c0';
+      ctx.save();
+      ctx.translate(ox, oy);
+      ctx.rotate(ang);
+      ctx.fillRect(-2, -6, 4, 12);
+      ctx.restore();
     }
     ctx.restore();
   }

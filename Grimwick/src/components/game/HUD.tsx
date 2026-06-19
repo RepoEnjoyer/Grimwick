@@ -224,6 +224,19 @@ export function HUD({ snapshot: s }: Props) {
 
       {/* ===== TOP RIGHT: room info ===== */}
       <div className="absolute top-3 right-3 flex flex-col gap-1 items-end text-xs">
+        {/* QOL: Stage badge — prominent colored indicator */}
+        <div
+          className="px-3 py-0.5 rounded-sm text-[10px] font-black tracking-widest border-2"
+          style={{
+            color: s.stageColor,
+            borderColor: s.stageColor,
+            background: 'rgba(0,0,0,0.7)',
+            textShadow: `0 0 8px ${s.stageColor}`,
+            boxShadow: `0 0 10px ${s.stageColor}55, inset 0 0 8px ${s.stageColor}22`,
+          }}
+        >
+          {s.stageName}
+        </div>
         <div className="bg-zinc-900/80 border border-zinc-700 px-3 py-1 rounded-sm">
           <span className="text-zinc-500">Room </span>
           <span className="text-amber-300 font-bold">{s.room.roomNumber}</span>

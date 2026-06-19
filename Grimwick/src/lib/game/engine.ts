@@ -5,12 +5,14 @@ import {
   ELITE_AFFIXES,
   ENEMY_TEMPLATES,
   RELICS,
+  STAGE_NAMES,
   UPGRADES,
   countSkillsInPath,
   createStartingPlayer,
   enemyDamageScale,
   enemyHpScale,
   generateWave,
+  getStage,
   rollEliteAffixes,
   wavesPerRoom,
 } from './content';
@@ -1020,7 +1022,7 @@ export class GameEngine {
             vy: Math.sin(a) * speed * 0.6,
             damage: dmg * 2.2,
             radius: 10,
-            life: 1.4,
+            life: 8, // bullets die on wall hit, not by timer
             pierceLeft: 0,
             chainLeft: p.chainCount,
             fromPlayer: true,
@@ -1039,7 +1041,7 @@ export class GameEngine {
             vy: Math.sin(a) * speed * 0.9,
             damage: dmg * 1.4,
             radius: 7,
-            life: 2.0,
+            life: 8,
             pierceLeft: p.pierce,
             chainLeft: p.chainCount,
             fromPlayer: true,
@@ -1060,7 +1062,7 @@ export class GameEngine {
             vy: Math.sin(a) * speed,
             damage: dmg,
             radius: 6,
-            life: 1.2,
+            life: 8, // bullets die on wall hit, not by timer
             pierceLeft: p.pierce,
             chainLeft: p.chainCount,
             fromPlayer: true,
@@ -1089,7 +1091,7 @@ export class GameEngine {
           vy: Math.sin(angle) * p.projectileSpeed,
           damage: dmg * 0.7,
           radius: 6,
-          life: 1.2,
+          life: 8,
           pierceLeft: p.pierce,
           chainLeft: p.chainCount,
           fromPlayer: true,
@@ -1147,7 +1149,7 @@ export class GameEngine {
   }) {
     this.projectiles.push({
       radius: 6,
-      life: 1.5,
+      life: 8, // longer lifetime — bullets die on wall hit, not by timer
       pierceLeft: 0,
       chainLeft: 0,
       hitSet: new Set<number>(),
@@ -1202,41 +1204,64 @@ export class GameEngine {
       pr.x += pr.vx * dt;
       pr.y += pr.vy * dt;
       pr.life -= dt;
-      // Ricochet: bounce off walls instead of being removed
-      if (pr.ricochetLeft && pr.ricochetLeft > 0) {
-        let bounced = false;
+
+      // ===== NEW WALL BEHAVIOR =====
+      // Bullets travel until they hit a wall. If they have ricochet, they bounce.
+      // If no ricochet left, they disappear on wall contact.
+      // Special projectile kinds (beam, deathray, soul_nova, meteor) ignore walls.
+      const passThroughWall =
+        pr.kind === 'beam' ||
+        pr.kind === 'deathray' ||
+        pr.kind === 'soul_nova' ||
+        pr.kind === 'meteor' ||
+        pr.kind === 'soulbomb' ||
+        pr.kind === 'lightning';
+
+      if (!passThroughWall) {
+        let hitWall = false;
+        let wallNx = 0;
+        let wallNy = 0;
         if (pr.x < pr.radius) {
-          pr.x = pr.radius;
-          pr.vx = Math.abs(pr.vx);
-          bounced = true;
+          hitWall = true;
+          wallNx = 1;
         } else if (pr.x > GAME_W - pr.radius) {
-          pr.x = GAME_W - pr.radius;
-          pr.vx = -Math.abs(pr.vx);
-          bounced = true;
+          hitWall = true;
+          wallNx = -1;
         }
         if (pr.y < pr.radius) {
-          pr.y = pr.radius;
-          pr.vy = Math.abs(pr.vy);
-          bounced = true;
+          hitWall = true;
+          wallNy = 1;
         } else if (pr.y > GAME_H - pr.radius) {
-          pr.y = GAME_H - pr.radius;
-          pr.vy = -Math.abs(pr.vy);
-          bounced = true;
+          hitWall = true;
+          wallNy = -1;
         }
-        if (bounced) {
-          pr.ricochetLeft--;
-          // clear hit set so bounced projectile can hit same enemies again
-          pr.hitSet.clear();
-          this.spawnParticles(pr.x, pr.y, 4, pr.color, 'spark', 0.2);
+
+        if (hitWall) {
+          if (pr.ricochetLeft && pr.ricochetLeft > 0) {
+            // BOUNCE: reflect velocity off wall normal
+            if (wallNx !== 0) {
+              pr.vx = Math.abs(pr.vx) * wallNx;
+              pr.x = wallNx > 0 ? pr.radius : GAME_W - pr.radius;
+            }
+            if (wallNy !== 0) {
+              pr.vy = Math.abs(pr.vy) * wallNy;
+              pr.y = wallNy > 0 ? pr.radius : GAME_H - pr.radius;
+            }
+            pr.ricochetLeft--;
+            // clear hit set so bounced projectile can hit same enemies again
+            pr.hitSet.clear();
+            this.spawnParticles(pr.x, pr.y, 4, pr.color, 'spark', 0.2);
+          } else {
+            // NO RICOCHET LEFT: destroy on wall hit
+            this.spawnParticles(pr.x, pr.y, 3, pr.color, 'spark', 0.15);
+            this.projectiles.splice(i, 1);
+            continue;
+          }
         }
       }
-      if (
-        pr.life <= 0 ||
-        pr.x < -40 ||
-        pr.x > GAME_W + 40 ||
-        pr.y < -40 ||
-        pr.y > GAME_H + 40
-      ) {
+
+      // Safety cleanup: extremely old projectiles (shouldn't happen with wall logic)
+      if (pr.life <= 0) {
         this.projectiles.splice(i, 1);
         continue;
       }
@@ -1366,7 +1391,7 @@ export class GameEngine {
                   vy: Math.sin(a) * 350,
                   damage: pr.damage * 0.4,
                   radius: 4,
-                  life: 0.6,
+                  life: 4, // splitter bolts die on wall hit
                   pierceLeft: 0,
                   chainLeft: 0,
                   fromPlayer: true,
@@ -1388,13 +1413,15 @@ export class GameEngine {
       pr.x += pr.vx * dt;
       pr.y += pr.vy * dt;
       pr.life -= dt;
+      // Die on wall hit (no ricochet for enemy projectiles)
       if (
-        pr.life <= 0 ||
-        pr.x < -40 ||
-        pr.x > GAME_W + 40 ||
-        pr.y < -40 ||
-        pr.y > GAME_H + 40
+        pr.x < pr.radius ||
+        pr.x > GAME_W - pr.radius ||
+        pr.y < pr.radius ||
+        pr.y > GAME_H - pr.radius ||
+        pr.life <= 0
       ) {
+        this.spawnParticles(pr.x, pr.y, 3, pr.color, 'spark', 0.15);
         this.enemyProjectiles.splice(i, 1);
         continue;
       }
@@ -1674,6 +1701,100 @@ export class GameEngine {
         }
         break;
       }
+      // ===== VOID STAGE ENEMIES =====
+      case 'void_horror': {
+        // Floating eye — approaches slowly, periodically teleports and fires 3 void bolts
+        e.phaseTimer -= dt;
+        if (e.phaseTimer <= 0) {
+          // Teleport to random position near player
+          e.phaseTimer = 4;
+          const tpAng = Math.random() * Math.PI * 2;
+          const tpDist = 200 + Math.random() * 150;
+          const newX = Math.max(50, Math.min(GAME_W - 50, p.x + Math.cos(tpAng) * tpDist));
+          const newY = Math.max(50, Math.min(GAME_H - 50, p.y + Math.sin(tpAng) * tpDist));
+          this.spawnParticles(e.x, e.y, 14, '#a040ff', 'magic', 0.5);
+          e.x = newX;
+          e.y = newY;
+          this.spawnParticles(e.x, e.y, 14, '#a040ff', 'magic', 0.5);
+          // Fire 3 void bolts at player
+          for (let i = -1; i <= 1; i++) {
+            const a = ang + i * 0.3;
+            this.spawnEnemyProjectile({
+              x: e.x,
+              y: e.y,
+              vx: Math.cos(a) * 280,
+              vy: Math.sin(a) * 280,
+              damage: e.damage,
+              kind: 'holy',
+              color: '#c080ff',
+              radius: 7,
+            });
+          }
+        }
+        // Slow approach
+        e.vx = Math.cos(ang) * e.speed * 0.6;
+        e.vy = Math.sin(ang) * e.speed * 0.6;
+        break;
+      }
+      case 'void_wraith': {
+        // Phasing ghost — phases in/out, fast approach when visible
+        e.phaseTimer -= dt;
+        if (e.phaseTimer <= 0) {
+          e.phaseActive = !e.phaseActive;
+          e.phaseTimer = e.phaseActive ? 2 : 1.2;
+        }
+        if (e.phaseActive) {
+          // Fast approach
+          e.vx = Math.cos(ang) * e.speed;
+          e.vy = Math.sin(ang) * e.speed;
+        } else {
+          // Slow drift even when phased
+          e.vx = Math.cos(ang) * e.speed * 0.3;
+          e.vy = Math.sin(ang) * e.speed * 0.3;
+        }
+        break;
+      }
+      case 'void_leviathan': {
+        // Huge tanky serpent — slow approach, fires 5-way spread
+        e.vx = Math.cos(ang) * e.speed;
+        e.vy = Math.sin(ang) * e.speed;
+        e.attackCooldown -= dt;
+        if (e.attackCooldown <= 0) {
+          e.attackCooldown = e.attackInterval;
+          // 5-way spread shot
+          for (let i = -2; i <= 2; i++) {
+            const a = ang + i * 0.25;
+            this.spawnEnemyProjectile({
+              x: e.x,
+              y: e.y,
+              vx: Math.cos(a) * 220,
+              vy: Math.sin(a) * 220,
+              damage: e.damage * 0.7,
+              kind: 'knife',
+              color: '#40c0a0',
+              radius: 6,
+            });
+          }
+        }
+        break;
+      }
+      case 'void_reaper': {
+        // Fast scythe-wielder — closes in quickly, lifesteal on hit (handled via vampiric elite)
+        // Periodic dash attack
+        e.phaseTimer -= dt;
+        if (e.phaseTimer <= 0) {
+          e.phaseTimer = 2.5;
+          // Dash toward player
+          e.vx = Math.cos(ang) * e.speed * 2.5;
+          e.vy = Math.sin(ang) * e.speed * 2.5;
+          this.spawnParticles(e.x, e.y, 6, '#ff40c0', 'magic', 0.3);
+        } else {
+          // Fast approach
+          e.vx = Math.cos(ang) * e.speed;
+          e.vy = Math.sin(ang) * e.speed;
+        }
+        break;
+      }
     }
 
     if (e.isBoss) {
@@ -1933,6 +2054,216 @@ export class GameEngine {
           e.damage = e.baseDamage * 1.3;
           this.spawnFloatingText(e.x, e.y - 60, 'ENRAGED!', '#ff4040');
           this.spawnParticles(e.x, e.y, 30, '#ff4040', 'magic', 0.8);
+        }
+        break;
+      }
+      // ===== VOID & ABYSS BOSSES =====
+      case 'void_reaper_king': {
+        // Teleporting scythe flurry — circles player, teleports, fires scythe arcs
+        if (dist > 250) {
+          e.vx = Math.cos(ang) * e.speed;
+          e.vy = Math.sin(ang) * e.speed;
+        } else {
+          // circle
+          e.vx = Math.cos(ang + Math.PI / 2) * e.speed;
+          e.vy = Math.sin(ang + Math.PI / 2) * e.speed;
+        }
+        // Scythe arc attack — 5-way spread
+        if (e.bossAttackTimer <= 0) {
+          e.bossAttackTimer = 1.0;
+          for (let i = -2; i <= 2; i++) {
+            const a = ang + i * 0.2;
+            this.spawnEnemyProjectile({
+              x: e.x,
+              y: e.y,
+              vx: Math.cos(a) * 320,
+              vy: Math.sin(a) * 320,
+              damage: e.damage * 0.6,
+              kind: 'knife',
+              color: '#ff40c0',
+              radius: 7,
+            });
+          }
+        }
+        // Special: teleport + ring of 16 scythes
+        if (e.bossSpecialTimer <= 0) {
+          e.bossSpecialTimer = 5;
+          // Teleport near player
+          const tpAng = Math.random() * Math.PI * 2;
+          e.x = Math.max(50, Math.min(GAME_W - 50, p.x + Math.cos(tpAng) * 250));
+          e.y = Math.max(50, Math.min(GAME_H - 50, p.y + Math.sin(tpAng) * 250));
+          this.spawnParticles(e.x, e.y, 24, '#a040ff', 'magic', 0.6);
+          this.spawnFloatingText(e.x, e.y - 30, 'TELEPORT!', '#a040ff');
+          // Ring of 16 scythes
+          for (let i = 0; i < 16; i++) {
+            const a = (i / 16) * Math.PI * 2;
+            this.spawnEnemyProjectile({
+              x: e.x,
+              y: e.y,
+              vx: Math.cos(a) * 260,
+              vy: Math.sin(a) * 260,
+              damage: e.damage * 0.5,
+              kind: 'knife',
+              color: '#ff40c0',
+              radius: 6,
+            });
+          }
+        }
+        break;
+      }
+      case 'void_leviathan': {
+        // Multi-phase sea serpent — slow approach, multi-phase attacks
+        e.vx = Math.cos(ang) * e.speed * 0.7;
+        e.vy = Math.sin(ang) * e.speed * 0.7;
+        const phase = e.bossPhase ?? 1;
+        // Phase 1 (100%-66% HP): 5-way spread
+        // Phase 2 (66%-33% HP): 9-way spread + summon void wraiths
+        // Phase 3 (33%-0% HP): spiral pattern + enrage
+        if (e.bossAttackTimer <= 0) {
+          if (phase === 1) {
+            e.bossAttackTimer = 1.4;
+            for (let i = -2; i <= 2; i++) {
+              const a = ang + i * 0.25;
+              this.spawnEnemyProjectile({
+                x: e.x,
+                y: e.y,
+                vx: Math.cos(a) * 240,
+                vy: Math.sin(a) * 240,
+                damage: e.damage * 0.6,
+                kind: 'knife',
+                color: '#40c0a0',
+                radius: 7,
+              });
+            }
+          } else if (phase === 2) {
+            e.bossAttackTimer = 1.2;
+            for (let i = -4; i <= 4; i++) {
+              const a = ang + i * 0.15;
+              this.spawnEnemyProjectile({
+                x: e.x,
+                y: e.y,
+                vx: Math.cos(a) * 240,
+                vy: Math.sin(a) * 240,
+                damage: e.damage * 0.5,
+                kind: 'knife',
+                color: '#40c0a0',
+                radius: 6,
+              });
+            }
+          } else {
+            // Phase 3: spiral
+            e.bossAttackTimer = 0.3;
+            const spiralAng = this.gameTime * 4;
+            for (let i = 0; i < 3; i++) {
+              const a = spiralAng + (i / 3) * Math.PI * 2;
+              this.spawnEnemyProjectile({
+                x: e.x,
+                y: e.y,
+                vx: Math.cos(a) * 220,
+                vy: Math.sin(a) * 220,
+                damage: e.damage * 0.5,
+                kind: 'knife',
+                color: '#40ffc0',
+                radius: 6,
+              });
+            }
+          }
+        }
+        // Special: summon void wraiths + transition phases
+        if (e.bossSpecialTimer <= 0) {
+          e.bossSpecialTimer = 8;
+          // Summon 3 void wraiths
+          for (let i = 0; i < 3; i++) {
+            this.queueSpawn(
+              e.x + (Math.random() - 0.5) * 80,
+              e.y + (Math.random() - 0.5) * 80,
+              'void_wraith'
+            );
+          }
+          this.spawnFloatingText(e.x, e.y - 40, 'SUMMON!', '#40c0a0');
+        }
+        // Phase transitions
+        if (phase === 1 && e.hp < e.maxHp * 0.66) {
+          e.bossPhase = 2;
+          this.spawnFloatingText(e.x, e.y - 60, 'PHASE 2!', '#40ffc0');
+          this.spawnParticles(e.x, e.y, 30, '#40ffc0', 'magic', 0.8);
+        } else if (phase === 2 && e.hp < e.maxHp * 0.33) {
+          e.bossPhase = 3;
+          e.speed = e.baseSpeed * 1.5;
+          this.spawnFloatingText(e.x, e.y - 60, 'ENRAGED!', '#ff4040');
+          this.spawnParticles(e.x, e.y, 40, '#ff4040', 'magic', 1);
+        }
+        break;
+      }
+      case 'lich_king': {
+        // Ultimate lich — summons minions, fires death beams, multi-phase
+        e.vx = Math.cos(ang) * e.speed * 0.5;
+        e.vy = Math.sin(ang) * e.speed * 0.5;
+        const phase = e.bossPhase ?? 1;
+        // Phase 1 (100%-50%): spiral of bones + summon skeleton adds
+        // Phase 2 (50%-0%): death beam + enrage + summon void reapers
+        if (e.bossAttackTimer <= 0) {
+          if (phase === 1) {
+            e.bossAttackTimer = 1.0;
+            // Spiral of bones
+            const spiralAng = this.gameTime * 5;
+            for (let i = 0; i < 4; i++) {
+              const a = spiralAng + (i / 4) * Math.PI * 2;
+              this.spawnEnemyProjectile({
+                x: e.x,
+                y: e.y,
+                vx: Math.cos(a) * 260,
+                vy: Math.sin(a) * 260,
+                damage: e.damage * 0.5,
+                kind: 'knife',
+                color: '#c0c0ff',
+                radius: 6,
+              });
+            }
+          } else {
+            // Phase 2: triple death beams (sunbeam)
+            e.bossAttackTimer = 1.5;
+            for (let i = -1; i <= 1; i++) {
+              const a = ang + i * 0.3;
+              this.spawnEnemyProjectile({
+                x: e.x,
+                y: e.y,
+                vx: Math.cos(a) * 360,
+                vy: Math.sin(a) * 360,
+                damage: e.damage * 0.8,
+                kind: 'sunbeam',
+                color: '#ff80ff',
+                radius: 10,
+              });
+            }
+          }
+        }
+        // Special: summon adds + heal slightly
+        if (e.bossSpecialTimer <= 0) {
+          e.bossSpecialTimer = 7;
+          // Summon 4 enemies
+          const summonPool: EnemyKind[] = phase === 1 ? ['void_wraith', 'void_reaper', 'bonebeast'] : ['void_reaper', 'void_leviathan', 'banshee'];
+          for (let i = 0; i < 4; i++) {
+            const summonKind = summonPool[Math.floor(Math.random() * summonPool.length)];
+            this.queueSpawn(
+              e.x + (Math.random() - 0.5) * 100,
+              e.y + (Math.random() - 0.5) * 100,
+              summonKind
+            );
+          }
+          // Heal 3% HP
+          const heal = e.maxHp * 0.03;
+          e.hp = Math.min(e.maxHp, e.hp + heal);
+          this.spawnFloatingText(e.x, e.y - 40, `+${Math.round(heal)} SUMMON`, '#c0c0ff');
+          this.spawnParticles(e.x, e.y, 20, '#c0c0ff', 'magic', 0.6);
+        }
+        // Phase transition at 50%
+        if (phase === 1 && e.hp < e.maxHp * 0.5) {
+          e.bossPhase = 2;
+          e.speed = e.baseSpeed * 1.4;
+          e.damage = e.baseDamage * 1.2;
+          this.spawnFloatingText(e.x, e.y - 60, 'PHASE 2: DARKNESS!', '#ff80ff');
+          this.spawnParticles(e.x, e.y, 50, '#ff80ff', 'magic', 1.2);
         }
         break;
       }
@@ -2662,10 +2993,21 @@ export class GameEngine {
 
     // ===== ELITE SPAWN LOGIC =====
     // Base chance scales with room depth. After room 2, every 6-10 spawns one elite.
+    // Stage 2+ (Void/Abyss): ALL void enemies are elites (much harder difficulty)
     this.eliteSpawnCounter++;
     let isElite = false;
     let affixes: EliteAffix[] = [];
-    if (this.roomNumber >= 2) {
+    const isVoidEnemy =
+      kind === 'void_horror' ||
+      kind === 'void_wraith' ||
+      kind === 'void_leviathan' ||
+      kind === 'void_reaper';
+    if (isVoidEnemy && this.roomNumber >= 17) {
+      // Void stage: all void enemies are elite with 1-2 affixes
+      isElite = true;
+      const affixCount = this.roomNumber >= 25 ? 2 : 1;
+      affixes = rollEliteAffixes(affixCount);
+    } else if (this.roomNumber >= 2) {
       // rough chance per spawn: 4% + room * 1%, capped at 12%
       const chance = Math.min(0.12, 0.04 + this.roomNumber * 0.01);
       // Force-spawn elite every 12 enemies if we haven't had one this cycle
@@ -3408,14 +3750,14 @@ export class GameEngine {
   phoenixUsedThisRoom = false;
 
   handleBossDefeated(kind: BossKind) {
-    // increment counter via death callback later; just continue
-    if (kind === 'bone_dragon') {
-      // final victory
+    // Stage transitions: only Lich King (final boss of Stage 3) ends the game with victory
+    if (kind === 'lich_king') {
+      // TRUE VICTORY — final boss of Stage 3 defeated
       this.setPhase('dead');
       this.cb.onDeath({
         soulsCollected: this.player.soulsCollected,
         roomsCleared: this.roomNumber,
-        bossesDefeated: 4,
+        bossesDefeated: 9,
         reachedVictory: true,
         timeSurvived: this.gameTime,
         damageTaken: Math.round(this.damageTaken),
@@ -3426,6 +3768,8 @@ export class GameEngine {
         skillsCount: this.player.skills.size,
       });
     }
+    // bone_dragon no longer ends the game — player continues into Stage 2 (Void)
+    // void_leviathan no longer ends the game — player continues into Stage 3 (Abyss)
   }
 
   // ---------------- waves & rooms ----------------
@@ -3460,12 +3804,22 @@ export class GameEngine {
   }
 
   startNextRoom() {
+    const prevStage = getStage(this.roomNumber);
     this.roomNumber++;
+    const newStage = getStage(this.roomNumber);
     this.waveNumber = 0;
     this.roomCleared = false;
     this.betweenWaves = 0;
     this.undyingUsedThisRoom = false;
     this.phoenixUsedThisRoom = false;
+
+    // Stage transition announcement
+    if (newStage !== prevStage) {
+      const stageInfo = STAGE_NAMES[newStage];
+      this.spawnFloatingText(GAME_W / 2, GAME_H / 2 - 100, stageInfo.name, stageInfo.color);
+      this.spawnFloatingText(GAME_W / 2, GAME_H / 2 - 60, stageInfo.subtitle, stageInfo.color);
+      this.spawnParticles(GAME_W / 2, GAME_H / 2, 40, stageInfo.color, 'magic', 1.2);
+    }
 
     // boss room check
     const bossEntry = BOSS_ROOM_SCHEDULE.find((b) => b.room === this.roomNumber);
@@ -3815,6 +4169,9 @@ export class GameEngine {
       bone_dragon: 'BONE SPIRAL',
       wraith_queen: 'TELEPORT + SUMMON',
       bone_colossus: 'SUMMON + HEAL',
+      void_reaper_king: 'TELEPORT + SCYTHE RING',
+      void_leviathan: 'SUMMON WRATHS',
+      lich_king: 'SUMMON ARMY',
     };
     return {
       name: names[b.bossKind] ?? 'SPECIAL',
@@ -3855,6 +4212,10 @@ export class GameEngine {
         survival: countSkillsInPath(p, 'survival'),
         generic: countSkillsInPath(p, 'generic'),
       },
+      // Stage info
+      stage: getStage(this.roomNumber),
+      stageName: STAGE_NAMES[getStage(this.roomNumber)].name,
+      stageColor: STAGE_NAMES[getStage(this.roomNumber)].color,
       targetId: this.currentTargetId,
       targetX: this.currentTargetId
         ? this.enemies.find((e) => e.id === this.currentTargetId)?.x ?? 0

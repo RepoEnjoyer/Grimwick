@@ -69,7 +69,7 @@ export function DeathScreen({ result, onReturn, onRestart }: Props) {
         </h1>
         <div className="text-zinc-400 text-sm mt-3 italic max-w-md">
           {victory
-            ? 'The Bone Dragon lies shattered. You have become the true Undead Lord of the Crypt.'
+            ? 'The Lich King falls. His throne is yours. You have conquered the Crypt, the Void, and the Abyss itself — you are the true Undead Lord.'
             : 'Your bones return to the crypt. But the souls you gathered will make you stronger next time.'}
         </div>
       </div>

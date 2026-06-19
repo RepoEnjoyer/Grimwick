@@ -22,7 +22,12 @@ export type EnemyKind =
   | 'paladin'
   | 'cultist'
   | 'banshee'
-  | 'bonebeast';
+  | 'bonebeast'
+  // ===== VOID STAGE (Stage 2) enemies =====
+  | 'void_horror' // floating eye that teleports and fires void bolts
+  | 'void_wraith' // phasing ghost that ignores walls
+  | 'void_leviathan' // huge tanky serpent with multi-shot
+  | 'void_reaper'; // fast scythe-wielder with lifesteal
 
 export type BossKind =
   | 'bell_knight'
@@ -30,7 +35,14 @@ export type BossKind =
   | 'sun_priest'
   | 'bone_dragon'
   | 'wraith_queen'
-  | 'bone_colossus';
+  | 'bone_colossus'
+  // ===== VOID & ABYSS BOSSES =====
+  | 'void_reaper_king' // Stage 2 mid-boss: teleporting scythe flurry
+  | 'void_leviathan' // Stage 2 final: multi-phase sea serpent
+  | 'lich_king'; // Stage 3 final: boss rush + ultimate lich
+
+// Stage identifiers for thematic progression
+export type Stage = 'crypt' | 'void' | 'abyss';
 
 // Elite enemy affixes — champions spawn with 1-2 of these modifiers
 export type EliteAffix =
@@ -472,6 +484,10 @@ export interface HudSnapshot {
     survival: number;
     generic: number;
   };
+  // Stage info
+  stage: 'crypt' | 'void' | 'abyss';
+  stageName: string;
+  stageColor: string;
   targetId: number | null; // current wand target enemy id (for target indicator)
   targetX: number; // target enemy x
   targetY: number; // target enemy y

@@ -127,6 +127,14 @@ export function StartScreen({
         <div>✦ Minions raise automatically from kills</div>
         <div>✦ Boss specials telegraph 1.5s before firing</div>
         <div>✦ Elite enemies (⚡) drop bonus souls &amp; relics</div>
+        <div>✦ Bullets vanish on wall hit (Ricochet bounces!)</div>
+      </div>
+      {/* Stage info */}
+      <div className="mt-3 text-[10px] max-w-[200px]">
+        <div className="uppercase tracking-wider mb-1 text-zinc-500">Stages</div>
+        <div style={{ color: '#a08060' }}>Stage 1: The Crypt (1-16)</div>
+        <div style={{ color: '#a040ff' }}>Stage 2: The Void Depths (17-24)</div>
+        <div style={{ color: '#ff4040' }}>Stage 3: The Abyssal Throne (25+)</div>
       </div>
     </div>
   );

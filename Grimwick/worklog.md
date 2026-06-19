@@ -541,3 +541,128 @@ Stage Summary:
   11. Enhanced death screen with 12 stats (Combat panel + Build panel, including DPS and damage ratio)
 - Pause menu also shows extended combat stats
 - All systems verified end-to-end via Agent Browser, no errors
+
+---
+Task ID: 7
+Agent: main (super-z)
+Task: 1) Make bullets travel until they hit walls, ricochet bounces, disappear on next wall hit if no ricochet left. 2) Add new advanced stages for leveled players — Stage 2 (Void) and Stage 3 (Abyss) with new enemies, bosses, and difficulty mechanics.
+
+Work Log:
+- BULLET WALL BEHAVIOR FIX:
+  - Updated spawnProjectile default life from 1.5s to 8s (bullets die on wall hit, not timer)
+  - Updated all wand projectile spawns (bolt, skull, homing, splitter, echo_wand bolt) to use life=8s
+  - Restructured wall collision logic in updateProjectiles:
+    * Special projectiles (beam, deathray, soul_nova, meteor, soulbomb, lightning) pass through walls
+    * Normal projectiles (bolt, skull, homing, splitter, knife, holy, sunbeam) check wall collision:
+      - If ricochetLeft > 0: reflect velocity off wall normal, clamp position, decrement ricochetLeft, clear hitSet, spark particles
+      - If ricochetLeft === 0: destroy projectile with spark particles
+  - Updated enemy projectiles to also die on wall hit (no ricochet for them)
+  - Updated Ricochet upgrade description: "Without this, shots disappear on wall contact."
+  - Verified: bullet travels 240px in 0.5s (480px/s), dies on wall hit, ricochet bounces correctly (ricochetLeft 2→1, velocity reverses)
+
+- NEW STAGE 2: THE VOID DEPTHS (rooms 17-24):
+  - Added 4 new void enemy types with distinct AI:
+    * void_horror: floating eldritch eye with tentacles, teleports every 4s and fires 3 void bolts, slow approach
+    * void_wraith: phasing tattered ghost (phases in/out like ghost but faster), fast approach when visible
+    * void_leviathan: huge tanky serpent (200 HP), slow approach, fires 5-way spread shot
+    * void_reaper: fast scythe-wielder (150 speed), periodic dash attack (2.5x speed)
+  - All void enemies in Stage 2+ are GUARANTEED ELITE (with 1 affix at 17-24, 2 affixes at 25+) — much harder difficulty
+  - Void enemy spawn pool replaces crypt enemies at room 17+
+  - 35% more enemies per wave in void stage, 50% more in abyss
+  - Added 2 new void bosses:
+    * Void Reaper King (room 18, 2800 HP): fast circling, scythe arc attacks, special = teleport + 16-scythe ring
+    * Void Leviathan (room 22, 4200 HP): multi-phase (5-way → 9-way → spiral), summons void wraiths, enrages at 33% HP
+
+- NEW STAGE 3: THE ABYSSAL THRONE (rooms 25+):
+  - Vision limiter: dark mask around player (only see ~320px radius), lifted during boss fights
+  - Pitch black background with red edge glow, floating ember particles, faint throne silhouette
+  - 60% more enemies per wave, mixed void + crypt enemy pool (all toughest enemies)
+  - Added Lich King boss (room 26, 6500 HP): ultimate finale
+    * Phase 1 (100-50% HP): spiral of bones attack, summons void_wraith/void_reaper/bonebeast
+    * Phase 2 (50-0% HP): triple death beams, summons void_reaper/void_leviathan/banshee, +20% damage, +40% speed
+    * Special: summons 4 enemies + heals 3% HP every 7s
+
+- STAGE PROGRESSION FIX:
+  - Updated handleBossDefeated: only Lich King (room 26) ends game with victory
+  - Bone Dragon (room 16) no longer ends game — player continues into Stage 2 (Void)
+  - Void Leviathan (room 22) no longer ends game — player continues into Stage 3 (Abyss)
+  - Added stage transition announcement in startNextRoom (e.g. "THE VOID DEPTHS / Stage 2" with colored particles)
+  - Updated death screen victory text: "The Lich King falls. His throne is yours..."
+
+- NEW ENEMY TEMPLATES (in content.ts):
+  - void_horror: 70 HP, 18 dmg, 70 spd, soulValue 8
+  - void_wraith: 50 HP, 20 dmg, 130 spd, soulValue 7
+  - void_leviathan: 200 HP, 26 dmg, 60 spd, soulValue 14
+  - void_reaper: 90 HP, 24 dmg, 150 spd, soulValue 10
+
+- NEW BOSS TEMPLATES:
+  - void_reaper_king: 2800 HP, 48 dmg, 130 spd, soulValue 280
+  - void_leviathan: 4200 HP, 52 dmg, 60 spd, soulValue 360
+  - lich_king: 6500 HP, 60 dmg, 80 spd, soulValue 500
+
+- Updated BOSS_ROOM_SCHEDULE:
+  - Stage 1: bell_knight (4), wraith_queen (6), twins (8), sun_priest (12), bone_colossus (14), bone_dragon (16)
+  - Stage 2: void_reaper_king (18), void_leviathan (22)
+  - Stage 3: lich_king (26)
+
+- Added getStage() helper and STAGE_NAMES table for stage identification
+- Updated generateWave to use stage-specific enemy pools and stage multipliers
+- Updated wavesPerRoom: Stage 2 has 3-6 waves, Stage 3 has 4-7 waves (vs 2-5 in crypt)
+
+- Updated spawnEnemyAt: void enemies in Stage 2+ are auto-elite with 1-2 affixes
+
+- Updated updateEnemyAI with 4 new void enemy AI cases (teleport+fire, phase, spread shot, dash)
+
+- Updated updateBossAI with 3 new boss cases:
+  * void_reaper_king: circle + scythe arcs + teleport + 16-scythe ring special
+  * void_leviathan: 3-phase (5-way → 9-way → spiral) + summon void_wraiths + phase transitions
+  * lich_king: 2-phase (spiral → death beams) + summon mixed enemies + heal + phase transition
+
+- Updated computeBossTelegraph with names for new bosses:
+  * void_reaper_king: 'TELEPORT + SCYTHE RING'
+  * void_leviathan: 'SUMMON WRATHS'
+  * lich_king: 'SUMMON ARMY'
+
+- RENDERING (render.ts):
+  - Imported getStage from content
+  - Updated drawFloor signature to take engine, dispatches to stage-specific floor rendering
+  - Added drawVoidFloor: deep purple gradient, 80 twinkling stars, 3 rotating void runes, pulsing void rift in center
+  - Added drawAbyssFloor: pure black, red edge glow, floating ember particles, vision limiter mask around player (skipped during boss fights), faint throne silhouette
+  - Added 4 new void enemy sprites:
+    * void_horror: floating eyeball with 6 animated tentacles, purple iris, glowing pupil
+    * void_wraith: tattered flowing cloak with phase alpha, hood, glowing blue eyes
+    * void_leviathan: segmented serpent body, huge head with fangs, dorsal fin, color changes per phase
+    * void_reaper: hooded robe, shadow face, glowing pink eyes, scythe with blade
+  - Added 3 new boss sprites:
+    * void_reaper_king: massive hooded reaper, void aura, flowing cloak, twin X-pattern scythes, 5 orbiting void orbs
+    * void_leviathan: 5-segment coiled serpent with slithering animation, huge head with fangs, dorsal fin, phase-based color/spikes
+    * lich_king: ornate robe with gold trim, skull head, golden crown with red/blue gems, glowing eye sockets (color shifts in phase 2), 6 orbiting bone shards
+
+- HUD UPDATES:
+  - Added stage badge (prominent colored indicator at top right) showing current stage name with glow
+  - Added stage, stageName, stageColor fields to HudSnapshot
+  - Updated emitHud to include stage info from getStage()
+  - Updated StartScreen with stage info panel (Stage 1/2/3 with colored text and room ranges)
+  - Updated StartScreen with bullet behavior hint: "Bullets vanish on wall hit (Ricochet bounces!)"
+
+- Updated death screen victory text for Lich King defeat
+
+- VERIFIED via Agent Browser:
+  - Bullet travels 240px in 0.5s at 480px/s (correct)
+  - Bullet dies on wall hit when no ricochet (verified: 1 projectile → 0 after wall contact)
+  - Ricochet bounces: ricochetLeft 2→1 on wall hit, velocity reverses (vx -480 → +480)
+  - Ricochet then dies: with ricochetLevel=1, bullet bounces once then dies on next wall
+  - Void stage: room 17 correctly identified as "void" stage, 24 void enemies all elite with random affixes
+  - Void Reaper King spawns at room 18 with 2800 HP
+  - Lich King spawns at room 26 with 6500 HP
+  - Bone Dragon no longer ends game — phase stays "playing" after kill, player continues to room 17
+  - Screenshots captured of void and abyss stages (no console errors)
+  - TypeScript: clean, ESLint: clean
+
+Stage Summary:
+- BULLET WALL BEHAVIOR: Bullets now travel until they hit a wall. With Ricochet, they bounce (decrement counter, clear hit set, reflect velocity). Without Ricochet, they disappear on wall contact with spark particles. Special projectiles (beams, novas, meteors) still pass through.
+- STAGE 2 (THE VOID DEPTHS, rooms 17-24): cosmic void background with stars and runes, 4 new void enemy types (all elite!), 2 new void bosses (Void Reaper King + Void Leviathan with 3 phases)
+- STAGE 3 (THE ABYSSAL THRONE, rooms 25+): pitch black with vision limiter, mixed toughest enemies, Lich King finale boss (2 phases, 6500 HP, summons + heals)
+- Game no longer ends at Bone Dragon — players can continue into 2 entirely new advanced stages with completely different visuals, enemies, and difficulty mechanics
+- True victory now requires defeating the Lich King at room 26
+- All systems verified end-to-end via Agent Browser, no errors
