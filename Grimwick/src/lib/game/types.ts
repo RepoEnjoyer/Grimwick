@@ -440,6 +440,22 @@ export interface PermanentProgress {
     eliteSoulBonus: number; // +bonus souls from elites
     startingRelic: number; // chance to start with a random relic
     soulMeterSize: number; // smaller soul meter (faster novas)
+    // ===== STAGE 2 UNLOCKS (locked until Void zone is unlocked) =====
+    stage2Damage: number; // +5% all damage per level
+    stage2Health: number; // +30 max HP per level
+    stage2EliteResist: number; // -10% damage from elites per level
+    stage2SoulMult: number; // +20% soul gain per level
+  };
+  // ===== NECROMINION: offline soul farming system =====
+  necrominion: {
+    lastCollectedAt: number; // timestamp (ms) of last collection
+    storedSouls: number; // souls waiting to be collected
+    upgradeLevels: {
+      generationRate: number; // souls per hour generated (base 10)
+      storageCap: number; // max stored souls (base 100)
+      conversionEfficiency: number; // % conversion to soul shards (base 50%)
+      autoCollect: number; // auto-collect threshold (0 = manual, levels increase auto %)
+    };
   };
 }
 

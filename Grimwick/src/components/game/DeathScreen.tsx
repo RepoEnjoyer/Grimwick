@@ -105,7 +105,7 @@ export function DeathScreen({ result, onReturn, onRestart }: Props) {
           {victory && zoneInfo
             ? isTrueVictory
               ? 'The Lich King falls. His throne is yours. You have conquered the Crypt, the Void, and the Abyss itself — you are the true Undead Lord.'
-              : zoneInfo.subtitle + ' A new zone awaits...'
+              : `Congratulations, Necromancer! ${zoneInfo.subtitle} A new zone awaits in the lobby...`
             : 'Your bones return to the crypt. But the souls you gathered will make you stronger next time.'}
         </div>
         {/* Zone unlock banner */}
@@ -154,19 +154,31 @@ export function DeathScreen({ result, onReturn, onRestart }: Props) {
         </div>
       </div>
 
-      <div className="flex gap-4">
-        <button
-          onClick={onRestart}
-          className="px-8 py-3 text-sm font-bold tracking-widest bg-gradient-to-b from-purple-700 to-purple-900 border-2 border-purple-400 text-white rounded-sm hover:from-purple-600 hover:to-purple-800 transition-all shadow-[0_0_20px_rgba(150,80,255,0.4)]"
-        >
-          ↻ RISE AGAIN <span className="text-purple-200 text-[10px] ml-1">[R]</span>
-        </button>
-        <button
-          onClick={onReturn}
-          className="px-8 py-3 text-sm font-bold tracking-widest border-2 border-zinc-600 text-zinc-300 bg-zinc-900/60 rounded-sm hover:border-zinc-400 hover:text-white transition-all"
-        >
-          ⚱ RETURN TO CRYPT
-        </button>
+      <div className="flex gap-4 flex-wrap justify-center">
+        {victory ? (
+          // Victory: prominent "Return to Lobby" button to see unlocked zone
+          <button
+            onClick={onReturn}
+            className="px-10 py-3 text-base font-bold tracking-widest bg-gradient-to-b from-amber-600 to-amber-800 border-2 border-amber-300 text-white rounded-sm hover:from-amber-500 hover:to-amber-700 transition-all shadow-[0_0_30px_rgba(255,180,60,0.6)]"
+          >
+            ⚱ RETURN TO LOBBY <span className="text-amber-200 text-[10px] ml-1">[R]</span>
+          </button>
+        ) : (
+          <button
+            onClick={onRestart}
+            className="px-8 py-3 text-sm font-bold tracking-widest bg-gradient-to-b from-purple-700 to-purple-900 border-2 border-purple-400 text-white rounded-sm hover:from-purple-600 hover:to-purple-800 transition-all shadow-[0_0_20px_rgba(150,80,255,0.4)]"
+          >
+            ↻ RISE AGAIN <span className="text-purple-200 text-[10px] ml-1">[R]</span>
+          </button>
+        )}
+        {!victory && (
+          <button
+            onClick={onReturn}
+            className="px-8 py-3 text-sm font-bold tracking-widest border-2 border-zinc-600 text-zinc-300 bg-zinc-900/60 rounded-sm hover:border-zinc-400 hover:text-white transition-all"
+          >
+            ⚱ RETURN TO LOBBY
+          </button>
+        )}
       </div>
     </div>
   );

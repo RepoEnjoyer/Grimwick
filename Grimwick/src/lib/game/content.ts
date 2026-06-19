@@ -27,9 +27,19 @@ export function createStartingPlayer(permanentBonuses: {
   eliteSoulBonus?: number;
   startingRelicChance?: number;
   soulMeterReduction?: number;
+  // Stage 2 upgrades
+  stage2Damage?: number;
+  stage2Health?: number;
+  stage2EliteResist?: number;
+  stage2SoulMult?: number;
 }): Player {
-  const baseWandDamage = 8 + permanentBonuses.wandPowerBonus * 3;
-  const baseMaxHp = 100 + permanentBonuses.healthBonus * 20;
+  // Stage 2 damage multiplier: +5% per level (applies to wand + minion damage)
+  const stage2DmgMult = 1 + (permanentBonuses.stage2Damage ?? 0) * 0.05;
+  const baseWandDamage = (8 + permanentBonuses.wandPowerBonus * 3) * stage2DmgMult;
+  // Stage 2 HP: +30 per level
+  const baseMaxHp = 100 + permanentBonuses.healthBonus * 20 + (permanentBonuses.stage2Health ?? 0) * 30;
+  // Stage 2 soul mult: +20% per level
+  const stage2SoulMult = 1 + (permanentBonuses.stage2SoulMult ?? 0) * 0.20;
   return {
     x: 0,
     y: 0,
@@ -66,9 +76,9 @@ export function createStartingPlayer(permanentBonuses: {
     minionHpMult: 1,
 
     soulPickupRange: 80 + (permanentBonuses.pickupRangeBonus ?? 0) * 12,
-    soulGainMult: 1 + permanentBonuses.soulGainBonus * 0.15,
+    soulGainMult: (1 + permanentBonuses.soulGainBonus * 0.15) * stage2SoulMult,
 
-    minionDamage: 6 + permanentBonuses.minionPowerBonus * 2,
+    minionDamage: Math.round((6 + permanentBonuses.minionPowerBonus * 2) * stage2DmgMult),
     minionDuration: 12,
     raiseChance: 0,
     maxMinions: 0,

@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { GameEngine, GAME_W, GAME_H } from '@/lib/game/engine';
 import type { GamePhase, HudSnapshot, Relic, Upgrade } from '@/lib/game/types';
-import { loadProgress, unlockZone, type PermanentProgress } from '@/lib/game/persistence';
+import { loadProgress, unlockZone, necrominionAutoCollect, type PermanentProgress } from '@/lib/game/persistence';
 import { HUD } from './HUD';
 import { StartScreen } from './StartScreen';
 import { UpgradeScreen } from './UpgradeScreen';
 import { DeathScreen } from './DeathScreen';
 import { CryptHub } from './CryptHub';
+import { NecrominionTab } from './NecrominionTab';
 import { PauseMenu } from './PauseMenu';
 
 // Build the permanent bonuses object from saved progress + selected wand
@@ -31,6 +32,11 @@ function buildBonuses(prog: PermanentProgress, wandType: string) {
     eliteSoulBonus: prog.upgrades.eliteSoulBonus,
     startingRelicChance: prog.upgrades.startingRelic,
     soulMeterReduction: prog.upgrades.soulMeterSize,
+    // Stage 2 upgrades (only have effect if Void zone is unlocked)
+    stage2Damage: prog.upgrades.stage2Damage,
+    stage2Health: prog.upgrades.stage2Health,
+    stage2EliteResist: prog.upgrades.stage2EliteResist,
+    stage2SoulMult: prog.upgrades.stage2SoulMult,
   };
 }
 
@@ -65,11 +71,26 @@ export function GameCanvas() {
     loadProgress()
   );
   const [showCrypt, setShowCrypt] = useState(false);
+  const [showNecrominion, setShowNecrominion] = useState(false);
   const [selectedWandType, setSelectedWandType] = useState<string>(
     () => loadProgress().unlockedWandTypes[0] || 'Bone Wand'
   );
   // ZONE SYSTEM: selected zone for next run (defaults to Crypt, always unlocked)
   const [selectedZone, setSelectedZone] = useState<'crypt' | 'void' | 'abyss'>('crypt');
+
+  // ===== NECROMINION: auto-collect on mount and periodically (every 60s) =====
+  useEffect(() => {
+    const autoCollect = () => {
+      const prog = loadProgress();
+      const newProg = necrominionAutoCollect(prog);
+      if (newProg !== prog) {
+        setProgress(newProg);
+      }
+    };
+    autoCollect(); // run on mount
+    const interval = setInterval(autoCollect, 60000); // check every 60s
+    return () => clearInterval(interval);
+  }, []);
 
   // Initialize engine on mount
   useEffect(() => {
@@ -189,7 +210,19 @@ export function GameCanvas() {
     engineRef.current?.rerollChoices();
   };
 
+  const [zoneUnlockNotification, setZoneUnlockNotification] = useState<string | null>(null);
+
   const handleReturnToMenu = () => {
+    // If a new zone was unlocked, show notification banner
+    if (deathResult?.nextZoneUnlocked) {
+      const zoneName = deathResult.nextZoneUnlocked.charAt(0).toUpperCase() + deathResult.nextZoneUnlocked.slice(1);
+      const fullZoneName =
+        deathResult.nextZoneUnlocked === 'void' ? 'THE VOID DEPTHS' :
+        deathResult.nextZoneUnlocked === 'abyss' ? 'THE ABYSSAL THRONE' : 'THE CRYPT';
+      setZoneUnlockNotification(`⚔ NEW ZONE UNLOCKED: ${fullZoneName}`);
+      // Auto-clear notification after 6 seconds
+      setTimeout(() => setZoneUnlockNotification(null), 6000);
+    }
     setPhase('menu');
     setDeathResult(null);
   };
@@ -199,6 +232,14 @@ export function GameCanvas() {
   };
   const handleCloseCrypt = () => {
     setShowCrypt(false);
+    setProgress(loadProgress());
+  };
+
+  const handleOpenNecrominion = () => {
+    setShowNecrominion(true);
+  };
+  const handleCloseNecrominion = () => {
+    setShowNecrominion(false);
     setProgress(loadProgress());
   };
 
@@ -259,11 +300,12 @@ export function GameCanvas() {
         {phase === 'playing' && hud && <HUD snapshot={hud} />}
 
         {/* Start screen */}
-        {phase === 'menu' && !showCrypt && (
+        {phase === 'menu' && !showCrypt && !showNecrominion && (
           <StartScreen
             progress={progress}
             onStart={startNewRun}
             onOpenCrypt={handleOpenCrypt}
+            onOpenNecrominion={handleOpenNecrominion}
             wandType={selectedWandType}
             onWandTypeChange={setSelectedWandType}
             selectedZone={selectedZone}
@@ -332,12 +374,36 @@ export function GameCanvas() {
         )}
 
         {/* Crypt hub */}
-        {showCrypt && (
+        {showCrypt && !showNecrominion && (
           <CryptHub
             progress={progress}
             onClose={handleCloseCrypt}
             onProgressChange={setProgress}
           />
+        )}
+
+        {/* Necrominion tab */}
+        {showNecrominion && (
+          <NecrominionTab
+            progress={progress}
+            onClose={handleCloseNecrominion}
+            onProgressChange={setProgress}
+          />
+        )}
+
+        {/* ===== Zone unlock notification banner ===== */}
+        {zoneUnlockNotification && (
+          <div className="absolute top-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none">
+            <div
+              className="px-6 py-3 bg-gradient-to-r from-amber-900 via-amber-700 to-amber-900 border-2 border-amber-400 rounded-sm font-mono font-bold tracking-widest text-amber-100 text-sm animate-pulse"
+              style={{
+                boxShadow: '0 0 30px rgba(255,180,60,0.8)',
+                textShadow: '0 0 8px rgba(255,180,60,0.8)',
+              }}
+            >
+              {zoneUnlockNotification}
+            </div>
+          </div>
         )}
       </div>
     </div>

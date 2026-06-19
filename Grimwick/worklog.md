@@ -769,3 +769,98 @@ Stage Summary:
 - LAG FIXED via 7 hard caps: 400 particles, 200 projectiles, 150 enemy projectiles, 80 enemies, 40 wave size, 30 floating texts, 25 damage numbers. Also throttled HUD to 5/sec and optimized particle rendering (removed expensive shadowBlur, added off-screen culling).
 - ZONE SYSTEM: Crypt, Void, and Abyss are now SEPARATE zones selectable from the StartScreen menu. Each zone has its own local room counter (1-N). Defeating the zone's final boss (Bone Dragon / Void Leviathan / Lich King) ends the run with "ZONE CLEARED" victory AND unlocks the next zone in the menu. True victory only at Lich King (Abyss).
 - All systems verified end-to-end via Agent Browser, no errors
+
+---
+Task ID: 9
+Agent: main (super-z)
+Task: 1) Add "Congratulations Necromancer" zone-clear victory screen + return to lobby with unlock notification. 2) Auto-collect souls at end of every round. 3) Add Necrominion offline soul farming tab. 4) Add Stage 2 upgrades locked until Void is unlocked, balanced for Void/Abyss difficulty.
+
+Work Log:
+
+- AUTO-COLLECT SOULS ON ROOM CLEAR:
+  - Updated handleRoomCleared in engine.ts to vacuum all remaining souls on the ground
+  - Auto-collects: normal souls (added to soulsCollected + soul meter), heal souls (+8 HP each), chest souls (deferred to openGoldenChest)
+  - Shows floating text: "+X souls, +Y HP" when collected
+  - Clears this.souls array after collection
+  - Verified: 5 souls on ground → 0 after room clear, player souls 30 → 78
+
+- ZONE-CLEAR VICTORY SCREEN:
+  - Updated DeathScreen to show "ZONE CLEARED" title (vs "TRUE VICTORY" for Lich King / "YOU DIED" for normal death)
+  - Added "Congratulations, Necromancer! [zone subtitle] A new zone awaits in the lobby..." message
+  - Victory screen shows prominent "RETURN TO LOBBY [R]" button (amber, glowing) instead of "RISE AGAIN"
+  - Zone unlock banner shows "⚔ THE VOID DEPTHS UNLOCKED" etc. with colored glow
+  - Updated handleReturnToMenu in GameCanvas: if deathResult.nextZoneUnlocked is set, show notification banner "⚔ NEW ZONE UNLOCKED: [ZONE NAME]" for 6 seconds
+  - Notification banner is amber, glowing, pulsing, top-center, pointer-events-none
+
+- NECROMINION OFFLINE SOUL FARMING TAB (new component: NecrominionTab.tsx):
+  - Added necrominion field to PermanentProgress type: lastCollectedAt, storedSouls, upgradeLevels {generationRate, storageCap, conversionEfficiency, autoCollect}
+  - Added 4 Necrominion upgrades (NECROMINION_UPGRADE_DEFS):
+    * Soul Well: +5 souls/hour per level (base 10/hr, max 10 levels)
+    * Soul Vessel: +100 max storage per level (base 100, max 10 levels)
+    * Soul Refinery: +5% conversion efficiency per level (base 50%, max 10 levels)
+    * Auto Harvester: +10% auto-collect threshold per level (0 = manual, max 10 levels)
+  - Added helper functions in persistence.ts:
+    * necrominionStats(): computes derived stats from upgrade levels
+    * necrominionPending(): calculates accumulated souls since last collection (capped at storage)
+    * necrominionCollect(): collects pending souls, converts to soul shards at efficiency rate
+    * necrominionAutoCollect(): auto-collects if storage >= threshold (for Auto Harvester upgrade)
+    * buyNecrominionUpgrade(): buys an upgrade with soul shards
+  - Created NecrominionTab.tsx component:
+    * Soul Vessel panel with storage progress bar (red glow when capped)
+    * Real-time pending souls counter (re-renders every second)
+    * Stats row: Generation/Storage/Conversion/Auto-Collect
+    * COLLECT SOULS button showing conversion preview
+    * 4 upgrade cards with level bars and buy buttons
+    * "How It Works" info panel
+    * Auto-collect timer: checks every 1s, auto-collects if threshold met
+  - Added Necrominion button to StartScreen main menu (emerald-themed, below Crypt Hub)
+  - Added showNecrominion state + handlers in GameCanvas
+  - Added necrominionAutoCollect on mount + every 60s in GameCanvas useEffect
+  - Verified: 2hr elapsed → 40 souls accumulated → collected → +22 shards (40 * 55% efficiency)
+
+- STAGE 2 UPGRADES (locked until Void zone is unlocked):
+  - Added 4 Stage 2 upgrade fields to PermanentProgress.upgrades: stage2Damage, stage2Health, stage2EliteResist, stage2SoulMult
+  - Added STAGE2_UPGRADE_DEFS in persistence.ts:
+    * Void Touched: +5% all damage per level (max 8, cost 100+80/lvl)
+    * Abyssal Vitality: +30 max HP per level (max 6, cost 90+70/lvl)
+    * Champion Breaker: -10% damage from elites per level (max 5, cost 120+90/lvl)
+    * Void Harvest: +20% soul gain per level (max 5, cost 110+85/lvl)
+  - Added isStage2Unlocked() and buyStage2Upgrade() functions
+  - Updated createStartingPlayer to apply Stage 2 bonuses:
+    * stage2Damage: multiplies wandDamage AND minionDamage by (1 + level * 0.05)
+    * stage2Health: adds level * 30 to baseMaxHp
+    * stage2SoulMult: multiplies soulGainMult by (1 + level * 0.20)
+  - Updated engine damagePlayer to apply stage2EliteResist: -10% damage per level from elite attackers
+  - Updated CryptHub to show Stage 2 section:
+    * Visible always, but shows "🔒 Clear Crypt to unlock" message if Void not unlocked
+    * When unlocked: shows 4 upgrade cards in fuchsia-themed grid
+    * Uses buyStage2Upgrade() for purchases
+  - Updated GameCanvas buildBonuses to pass all 4 stage2 upgrade levels
+  - Updated engine permanentBonuses interface + constructor to accept stage2 fields
+  - Verified: buying Void Touched level 4 cost 340 shards, stage2Damage went 3 → 4
+
+- BALANCE:
+  - Stage 2 upgrades are intentionally expensive (100+ per level) to require farming
+  - Stage 2 damage scales multiplicatively with wand + minion damage (5% per level, max 40% at level 8)
+  - Stage 2 HP is additive (max +180 HP at level 6) — needed for Void's all-elite enemies
+  - Stage 2 elite resist is multiplicative damage reduction (max -50% at level 5) — critical for Void/Abyss
+  - Stage 2 soul mult is multiplicative (max +100% at level 5) — helps farm shards faster
+  - Necrominion provides passive income but is capped (max ~60/hr, ~1100 storage, ~100% efficiency)
+  - Auto-collect only triggers when storage is >= auto-collect threshold % (requires Auto Harvester upgrade)
+
+- VERIFIED via Agent Browser:
+  - Necrominion tab opens, shows accumulated souls (2hr elapsed → 40 souls)
+  - Collect button works: 40 souls → 22 shards (55% efficiency)
+  - 4 Necrominion upgrades visible and purchasable
+  - Crypt Hub shows Stage 2 section (4 upgrades visible since Void is unlocked)
+  - Buying Void Touched level 4: cost 340 shards, stage2Damage 3 → 4
+  - Zone clear: Bone Dragon defeated → "ZONE CLEARED" screen → "RETURN TO LOBBY" button
+  - Auto-collect on room clear: 5 souls → 0, player souls 30 → 78
+  - No console errors, TypeScript clean, ESLint clean
+
+Stage Summary:
+- AUTO-COLLECT: All souls are auto-collected at end of every room (no more missing souls on the ground)
+- ZONE-CLEAR FLOW: Defeating zone's final boss → "ZONE CLEARED" screen with "Congratulations, Necromancer!" → Return to Lobby button → notification banner "⚔ NEW ZONE UNLOCKED: [ZONE]" appears for 6 seconds
+- NECROMINION TAB: New main menu tab for offline soul farming. Generates souls passively (10/hr base), stores up to cap (100 base), converts to shards at 50% base. 4 upgrades to improve rate/cap/efficiency/auto-collect. Auto-collects when threshold met if Auto Harvester upgraded.
+- STAGE 2 UPGRADES: 4 new upgrades in Crypt Hub, locked until Void zone is unlocked. Provide the power needed for Void/Abyss difficulty: +40% damage, +180 HP, -50% elite damage, +100% soul gain at max levels. Balanced costs (100+ per level) to require farming.
+- All systems verified end-to-end via Agent Browser, no errors

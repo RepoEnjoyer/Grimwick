@@ -184,6 +184,11 @@ export class GameEngine {
     eliteSoulBonus: number;
     startingRelicChance: number;
     soulMeterReduction: number;
+    // Stage 2 upgrades
+    stage2Damage: number;
+    stage2Health: number;
+    stage2EliteResist: number;
+    stage2SoulMult: number;
   };
 
   extraLivesRemaining = 0; // runtime counter for extra lives
@@ -209,6 +214,10 @@ export class GameEngine {
       eliteSoulBonus: number;
       startingRelicChance: number;
       soulMeterReduction: number;
+      stage2Damage: number;
+      stage2Health: number;
+      stage2EliteResist: number;
+      stage2SoulMult: number;
     },
     startingZone: 'crypt' | 'void' | 'abyss' = 'crypt'
   ) {
@@ -3721,9 +3730,15 @@ export class GameEngine {
       p.iframes = 0.6;
       return;
     }
-    p.hp -= dmg;
+    // ===== Stage 2 elite resist: -10% damage from elite enemies per level =====
+    let finalDmg = dmg;
+    if (attacker?.isElite && this.permanentBonuses.stage2EliteResist > 0) {
+      const resistMult = Math.max(0.1, 1 - this.permanentBonuses.stage2EliteResist * 0.1);
+      finalDmg = dmg * resistMult;
+    }
+    p.hp -= finalDmg;
     // QOL: track damage taken
-    this.damageTaken += dmg;
+    this.damageTaken += finalDmg;
     // Apply iframe bonus from permanent upgrades
     p.iframes = 0.5 + (this.permanentBonuses.iframeBonus ?? 0) * 0.1;
     this.spawnParticles(p.x, p.y, 8, '#ff6060', 'spark', 0.4);
@@ -3954,12 +3969,44 @@ export class GameEngine {
   }
 
   handleRoomCleared() {
+    // ===== AUTO-COLLECT SOULS: vacuum all remaining souls on the ground =====
+    let autoGained = 0;
+    let autoHealed = 0;
+    let chestsCollected = 0;
+    for (const s of this.souls) {
+      if (s.collected) continue;
+      if (s.kind === 'heal') {
+        this.player.hp = Math.min(this.player.maxHp, this.player.hp + 8);
+        autoHealed++;
+      } else if (s.kind === 'chest') {
+        // Defer chest to next upgrade choice flow
+        chestsCollected++;
+      } else {
+        const gain = Math.max(1, Math.round(s.value * this.player.soulGainMult));
+        this.player.soulsCollected += gain;
+        autoGained += gain;
+        // Charge soul meter
+        this.player.soulMeter = Math.min(this.player.soulMeterMax, this.player.soulMeter + 1);
+      }
+    }
+    this.souls = []; // clear all souls (chests deferred will be re-queued below)
+    if (autoGained > 0 || autoHealed > 0) {
+      this.spawnFloatingText(
+        this.player.x,
+        this.player.y - 40,
+        `+${autoGained} souls, +${autoHealed * 8} HP`,
+        '#7affa0'
+      );
+    }
     // heal a little
     this.player.hp = Math.min(this.player.maxHp, this.player.hp + 10);
     // offer upgrade or relic
     if (this.pendingRelicDrop) {
       this.pendingRelicDrop = false;
       this.offerRelicChoices();
+    } else if (chestsCollected > 0) {
+      // open any chests that were auto-collected
+      this.openGoldenChest();
     } else {
       this.offerUpgradeChoices();
     }

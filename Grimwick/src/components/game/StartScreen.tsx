@@ -8,6 +8,7 @@ interface Props {
   progress: PermanentProgress;
   onStart: () => void;
   onOpenCrypt: () => void;
+  onOpenNecrominion: () => void;
   wandType: string;
   onWandTypeChange: (w: string) => void;
   selectedZone: Zone;
@@ -46,6 +47,7 @@ export function StartScreen({
   progress,
   onStart,
   onOpenCrypt,
+  onOpenNecrominion,
   wandType,
   onWandTypeChange,
   selectedZone,
@@ -173,6 +175,12 @@ export function StartScreen({
           className="px-6 py-2 text-xs border border-zinc-700 text-zinc-300 bg-zinc-900/60 rounded-sm hover:border-amber-600 hover:text-amber-300 transition-all"
         >
           ⚱ Crypt Hub · Permanent Upgrades
+        </button>
+        <button
+          onClick={onOpenNecrominion}
+          className="px-6 py-2 text-xs border border-emerald-800 text-emerald-300 bg-emerald-950/40 rounded-sm hover:border-emerald-500 hover:text-emerald-200 transition-all"
+        >
+          ☠ Necrominion · Offline Soul Farming
         </button>
       </div>
 

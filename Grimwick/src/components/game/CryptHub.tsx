@@ -3,7 +3,10 @@
 import { useState } from 'react';
 import {
   PERMANENT_UPGRADE_DEFS,
+  STAGE2_UPGRADE_DEFS,
   buyUpgrade,
+  buyStage2Upgrade,
+  isStage2Unlocked,
   type PermanentProgress,
 } from '@/lib/game/persistence';
 
@@ -15,10 +18,31 @@ interface Props {
 
 export function CryptHub({ progress, onClose, onProgressChange }: Props) {
   const [error, setError] = useState<string>('');
+  const stage2Unlocked = isStage2Unlocked(progress);
 
   const handleBuy = (
     id: keyof PermanentProgress['upgrades']
   ) => {
+    // Try Stage 2 first if it's a stage2 ID
+    if (String(id).startsWith('stage2')) {
+      const newProgress = buyStage2Upgrade(progress, id);
+      if (newProgress) {
+        onProgressChange(newProgress);
+        setError('');
+        return;
+      } else {
+        const def = STAGE2_UPGRADE_DEFS.find((d) => d.id === id);
+        const currentLevel = progress.upgrades[id];
+        if (def && currentLevel >= def.maxLevel) {
+          setError(`${def.name} is already at max level.`);
+        } else {
+          const cost = def ? def.cost(currentLevel) : 0;
+          setError(`Need ${cost} soul shards.`);
+        }
+        return;
+      }
+    }
+    // Regular upgrade
     const newProgress = buyUpgrade(progress, id);
     if (newProgress) {
       onProgressChange(newProgress);
@@ -145,6 +169,90 @@ export function CryptHub({ progress, onClose, onProgressChange }: Props) {
         {error && (
           <div className="text-center mt-4 text-rose-400 text-xs">{error}</div>
         )}
+
+        {/* ===== STAGE 2 UPGRADES SECTION ===== */}
+        <div className="max-w-6xl mx-auto mt-8">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="text-[10px] uppercase tracking-wider text-fuchsia-400">
+              Stage 2 Upgrades · Void Power
+            </div>
+            <div className="flex-1 h-px bg-fuchsia-900/50" />
+            <div className={`text-[10px] uppercase tracking-wider ${stage2Unlocked ? 'text-emerald-400' : 'text-zinc-600'}`}>
+              {stage2Unlocked ? '✓ Unlocked' : '🔒 Clear Crypt to unlock'}
+            </div>
+          </div>
+          {stage2Unlocked ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              {STAGE2_UPGRADE_DEFS.map((def) => {
+                const upgradeId = def.id as keyof PermanentProgress['upgrades'];
+                const level = progress.upgrades[upgradeId];
+                const maxed = level >= def.maxLevel;
+                const cost = def.cost(level);
+                const canAfford = progress.soulShards >= cost && !maxed;
+                return (
+                  <div
+                    key={def.id}
+                    className={`relative bg-gradient-to-b from-fuchsia-950/40 to-zinc-950/90 border-2 ${
+                      maxed
+                        ? 'border-amber-600'
+                        : canAfford
+                          ? 'border-fuchsia-700'
+                          : 'border-zinc-800'
+                    } p-4 rounded-sm flex flex-col gap-3`}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="text-3xl">{def.icon}</div>
+                      <div className="text-right">
+                        <div className="text-[10px] text-zinc-500 uppercase">Level</div>
+                        <div className="text-sm font-bold text-fuchsia-200">
+                          {level} / {def.maxLevel}
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <h3 className="text-base font-bold text-white">{def.name}</h3>
+                      <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                        {def.description}
+                      </p>
+                    </div>
+                    {/* Level bars */}
+                    <div className="flex gap-0.5">
+                      {Array.from({ length: def.maxLevel }).map((_, i) => (
+                        <div
+                          key={i}
+                          className={`flex-1 h-1.5 ${
+                            i < level ? 'bg-fuchsia-500' : 'bg-zinc-800'
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <button
+                      disabled={maxed || !canAfford}
+                      onClick={() => handleBuy(upgradeId)}
+                      className={`w-full py-2 text-xs font-bold tracking-wider rounded-sm transition-all ${
+                        maxed
+                          ? 'bg-amber-900/30 text-amber-400 border border-amber-700 cursor-default'
+                          : canAfford
+                            ? 'bg-fuchsia-800 text-white border border-fuchsia-500 hover:bg-fuchsia-700 hover:shadow-[0_0_12px_rgba(200,80,255,0.4)]'
+                            : 'bg-zinc-900 text-zinc-600 border border-zinc-800 cursor-not-allowed'
+                      }`}
+                    >
+                      {maxed ? '★ MAXED' : `✦ ${cost}`}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="bg-zinc-950/60 border border-zinc-800 p-6 rounded-sm text-center">
+              <div className="text-zinc-500 text-sm italic">
+                🔒 Defeat the Bone Dragon in The Crypt to unlock Stage 2 upgrades.
+                <br />
+                These upgrades provide the power needed to survive The Void Depths and The Abyssal Throne.
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Unlocks section */}
         <div className="max-w-6xl mx-auto mt-8 grid grid-cols-1 md:grid-cols-3 gap-4">
