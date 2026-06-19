@@ -6,9 +6,11 @@ import {
   STAGE2_UPGRADE_DEFS,
   buyUpgrade,
   buyStage2Upgrade,
+  buySkin,
   isStage2Unlocked,
   type PermanentProgress,
 } from '@/lib/game/persistence';
+import { SKINS } from '@/lib/game/content';
 
 interface Props {
   progress: PermanentProgress;
@@ -264,7 +266,7 @@ export function CryptHub({ progress, onClose, onProgressChange }: Props) {
           <UnlockCard
             title="Skins"
             items={progress.unlockedSkins}
-            hint="Future update"
+            hint="Earn by clearing zones or buy below"
           />
           <UnlockCard
             title="Dungeon Zones"
@@ -272,6 +274,9 @@ export function CryptHub({ progress, onClose, onProgressChange }: Props) {
             hint="Unlock by clearing previous zone's final boss"
           />
         </div>
+
+        {/* ===== SKIN SHOP ===== */}
+        <SkinShop progress={progress} onProgressChange={onProgressChange} />
 
         {/* Legacy stats */}
         <div className="max-w-6xl mx-auto mt-8 bg-zinc-950/60 border border-zinc-800 p-4 rounded-sm">
@@ -328,6 +333,113 @@ function Stat({ label, value }: { label: string; value: number }) {
     <div>
       <div className="text-[10px] text-zinc-500 uppercase">{label}</div>
       <div className="text-xl font-bold text-purple-200">{value}</div>
+    </div>
+  );
+}
+
+// ===== SKIN SHOP component =====
+function SkinShop({
+  progress,
+  onProgressChange,
+}: {
+  progress: PermanentProgress;
+  onProgressChange: (p: PermanentProgress) => void;
+}) {
+  const [error, setError] = useState<string>('');
+  const [success, setSuccess] = useState<string>('');
+
+  // Skins that are purchasable with soul shards (not zone-unlock skins)
+  const purchasableSkins = SKINS.filter((s) =>
+    ['frost_mage', 'shadow_reaper', 'blood_mage', 'cosmic_horror'].includes(s.id)
+  );
+
+  // Parse cost from unlockHint (e.g. "Buy from Crypt Hub (500 soul shards)" → 500)
+  const getSkinCost = (skinId: string): number => {
+    const skin = SKINS.find((s) => s.id === skinId);
+    if (!skin) return 9999;
+    const match = skin.unlockHint.match(/\((\d+)\s+soul shards\)/);
+    return match ? parseInt(match[1], 10) : 9999;
+  };
+
+  const handleBuy = (skinId: string) => {
+    const skin = SKINS.find((s) => s.id === skinId);
+    if (!skin) return;
+    if (progress.unlockedSkins.includes(skin.name)) {
+      setError(`${skin.name} already owned.`);
+      setSuccess('');
+      return;
+    }
+    const cost = getSkinCost(skinId);
+    const newProgress = buySkin(progress, skin.name, cost);
+    if (newProgress) {
+      onProgressChange(newProgress);
+      setSuccess(`✓ Unlocked ${skin.name}!`);
+      setError('');
+      setTimeout(() => setSuccess(''), 3000);
+    } else {
+      setError(`Need ${cost} soul shards.`);
+      setSuccess('');
+    }
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto mt-8">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="text-[10px] uppercase tracking-wider text-emerald-400">
+          Skin Shop · Cosmetic Skins
+        </div>
+        <div className="flex-1 h-px bg-emerald-900/50" />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {purchasableSkins.map((skin) => {
+          const owned = progress.unlockedSkins.includes(skin.name);
+          const cost = getSkinCost(skin.id);
+          const canAfford = progress.soulShards >= cost && !owned;
+          return (
+            <div
+              key={skin.id}
+              className={`bg-gradient-to-b from-zinc-900/90 to-zinc-950/90 border-2 p-4 rounded-sm flex flex-col gap-2 ${
+                owned ? 'border-emerald-600' : canAfford ? 'border-emerald-700' : 'border-zinc-800'
+              }`}
+            >
+              {/* Skin preview swatch */}
+              <div className="flex gap-1 mb-1">
+                <div className="w-6 h-6 rounded-sm border border-zinc-700" style={{ background: skin.boneColor }} title="Bones" />
+                <div className="w-6 h-6 rounded-sm border border-zinc-700" style={{ background: skin.robeColor }} title="Robe" />
+                <div className="w-6 h-6 rounded-sm border border-zinc-700" style={{ background: skin.robeTrim }} title="Trim" />
+                <div className="w-6 h-6 rounded-sm border border-zinc-700" style={{ background: skin.eyeColor }} title="Eyes" />
+                <div className="w-6 h-6 rounded-sm border border-zinc-700" style={{ background: skin.wandTipColor }} title="Wand" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">{skin.name}</h3>
+                <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">{skin.description}</p>
+              </div>
+              <button
+                disabled={owned || !canAfford}
+                onClick={() => handleBuy(skin.id)}
+                className={`w-full py-2 text-xs font-bold tracking-wider rounded-sm transition-all ${
+                  owned
+                    ? 'bg-emerald-900/30 text-emerald-400 border border-emerald-700 cursor-default'
+                    : canAfford
+                      ? 'bg-emerald-800 text-white border border-emerald-500 hover:bg-emerald-700 hover:shadow-[0_0_12px_rgba(80,200,140,0.4)]'
+                      : 'bg-zinc-900 text-zinc-600 border border-zinc-800 cursor-not-allowed'
+                }`}
+              >
+                {owned ? '✓ OWNED' : `✦ ${cost}`}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      {/* Zone-unlock skins info */}
+      <div className="mt-4 bg-zinc-950/60 border border-zinc-800 p-3 rounded-sm text-[11px] text-zinc-500">
+        <div className="text-zinc-400 font-bold mb-1">Earnable Skins (cannot be purchased):</div>
+        <div>• <span style={{ color: '#ffd040' }}>Golden Lich</span> — Clear The Crypt (defeat Bone Dragon)</div>
+        <div>• <span style={{ color: '#a040ff' }}>Void Walker</span> — Clear The Void Depths (defeat Void Leviathan)</div>
+        <div>• <span style={{ color: '#ff4060' }}>Bone King</span> — Clear The Abyssal Throne (defeat Lich King)</div>
+      </div>
+      {error && <div className="text-center mt-3 text-rose-400 text-xs">{error}</div>}
+      {success && <div className="text-center mt-3 text-emerald-400 text-xs font-bold animate-pulse">{success}</div>}
     </div>
   );
 }

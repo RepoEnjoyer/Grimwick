@@ -429,6 +429,22 @@ export function buyUpgrade(
       newProgress.unlockedWandTypes.push('Lich Wand');
     }
   }
+  if (upgradeId === 'wandPower' && currentLevel + 1 >= 8) {
+    if (!newProgress.unlockedWandTypes.includes('Void Wand')) {
+      newProgress.unlockedWandTypes.push('Void Wand');
+    }
+  }
+  // Stage 2 unlocks also grant new wands
+  if (upgradeId === 'stage2Damage' && currentLevel + 1 >= 5) {
+    if (!newProgress.unlockedWandTypes.includes('Abyss Wand')) {
+      newProgress.unlockedWandTypes.push('Abyss Wand');
+    }
+  }
+  if (upgradeId === 'stage2Damage' && currentLevel + 1 >= 8) {
+    if (!newProgress.unlockedWandTypes.includes('Cosmic Wand')) {
+      newProgress.unlockedWandTypes.push('Cosmic Wand');
+    }
+  }
   saveProgress(newProgress);
   return newProgress;
 }
@@ -452,10 +468,44 @@ export function unlockZone(
   zone: 'crypt' | 'void' | 'abyss'
 ): PermanentProgress {
   const zoneName = zone.charAt(0).toUpperCase() + zone.slice(1);
-  if (progress.unlockedZones.includes(zoneName)) return progress;
+  let newProgress = progress;
+  if (!progress.unlockedZones.includes(zoneName)) {
+    newProgress = {
+      ...progress,
+      unlockedZones: [...progress.unlockedZones, zoneName],
+    };
+  }
+  // ===== AUTO-UNLOCK SKIN on zone clear =====
+  const zoneSkinMap: Record<'crypt' | 'void' | 'abyss', string> = {
+    crypt: 'Golden Lich',
+    void: 'Void Walker',
+    abyss: 'Bone King',
+  };
+  const skinName = zoneSkinMap[zone];
+  if (skinName && !newProgress.unlockedSkins.includes(skinName)) {
+    newProgress = {
+      ...newProgress,
+      unlockedSkins: [...newProgress.unlockedSkins, skinName],
+    };
+  }
+  if (newProgress !== progress) {
+    saveProgress(newProgress);
+  }
+  return newProgress;
+}
+
+// ===== Buy a skin with soul shards =====
+export function buySkin(
+  progress: PermanentProgress,
+  skinName: string,
+  cost: number
+): PermanentProgress | null {
+  if (progress.unlockedSkins.includes(skinName)) return null;
+  if (progress.soulShards < cost) return null;
   const newProgress: PermanentProgress = {
     ...progress,
-    unlockedZones: [...progress.unlockedZones, zoneName],
+    soulShards: progress.soulShards - cost,
+    unlockedSkins: [...progress.unlockedSkins, skinName],
   };
   saveProgress(newProgress);
   return newProgress;

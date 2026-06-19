@@ -13,7 +13,7 @@ import { NecrominionTab } from './NecrominionTab';
 import { PauseMenu } from './PauseMenu';
 
 // Build the permanent bonuses object from saved progress + selected wand
-function buildBonuses(prog: PermanentProgress, wandType: string) {
+function buildBonuses(prog: PermanentProgress, wandType: string, skin: string) {
   return {
     healthBonus: prog.upgrades.startHealth,
     wandPowerBonus: prog.upgrades.wandPower,
@@ -37,6 +37,8 @@ function buildBonuses(prog: PermanentProgress, wandType: string) {
     stage2Health: prog.upgrades.stage2Health,
     stage2EliteResist: prog.upgrades.stage2EliteResist,
     stage2SoulMult: prog.upgrades.stage2SoulMult,
+    // Skin
+    skin,
   };
 }
 
@@ -74,6 +76,10 @@ export function GameCanvas() {
   const [showNecrominion, setShowNecrominion] = useState(false);
   const [selectedWandType, setSelectedWandType] = useState<string>(
     () => loadProgress().unlockedWandTypes[0] || 'Bone Wand'
+  );
+  // SKIN SYSTEM: selected skin for next run (defaults to 'default')
+  const [selectedSkin, setSelectedSkin] = useState<string>(
+    () => loadProgress().unlockedSkins[0] || 'default'
   );
   // ZONE SYSTEM: selected zone for next run (defaults to Crypt, always unlocked)
   const [selectedZone, setSelectedZone] = useState<'crypt' | 'void' | 'abyss'>('crypt');
@@ -138,7 +144,7 @@ export function GameCanvas() {
           setProgress(updated);
         },
       },
-      buildBonuses(prog, selectedWandType),
+      buildBonuses(prog, selectedWandType, selectedSkin),
       selectedZone
     );
     engineRef.current = engine;
@@ -167,12 +173,12 @@ export function GameCanvas() {
     if (!engine) return;
     // update wand type and bonuses
     const prog = loadProgress();
-    engine.permanentBonuses = buildBonuses(prog, selectedWandType);
+    engine.permanentBonuses = buildBonuses(prog, selectedWandType, selectedSkin);
     // ZONE SYSTEM: set the current zone before starting the run
     engine.currentZone = selectedZone;
     engine.startRun();
     setShowCrypt(false);
-  }, [selectedWandType, selectedZone]);
+  }, [selectedWandType, selectedZone, selectedSkin]);
 
   // QOL: Global R hotkey — Restart from death/pause, or Reroll in upgrade/chest screen
   useEffect(() => {
@@ -311,6 +317,9 @@ export function GameCanvas() {
             selectedZone={selectedZone}
             onZoneChange={setSelectedZone}
             unlockedZones={progress.unlockedZones}
+            selectedSkin={selectedSkin}
+            onSkinChange={setSelectedSkin}
+            unlockedSkins={progress.unlockedSkins}
           />
         )}
 

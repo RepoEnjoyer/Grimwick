@@ -206,6 +206,24 @@ export interface Player {
   kills: number;
   soulsCollected: number; // this run
   wandType: string;
+  skin: string; // active skin id (e.g. 'default', 'golden_lich', 'void_walker')
+}
+
+// ===== SKIN DEFINITIONS =====
+export interface SkinDef {
+  id: string;
+  name: string;
+  description: string;
+  // color palette
+  boneColor: string;
+  robeColor: string;
+  robeTrim: string;
+  eyeColor: string;
+  wandTipColor: string;
+  // unlock requirement
+  unlockHint: string;
+  // special VFX flag
+  auraColor?: string;
 }
 
 export interface Projectile {

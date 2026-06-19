@@ -1,6 +1,6 @@
 // Canvas rendering: dark fantasy pixel-art-ish style with glow effects
 import { GameEngine, GAME_W, GAME_H } from './engine';
-import { ELITE_AFFIXES, getStage } from './content';
+import { ELITE_AFFIXES, getSkin, getStage } from './content';
 import type {
   BlackHole,
   BoneWall,
@@ -49,6 +49,19 @@ export function drawGame(engine: GameEngine) {
   const ctx = engine.ctx;
   const t = engine.gameTime;
   ctx.clearRect(0, 0, GAME_W, GAME_H);
+
+  // ===== SCREEN SHAKE: apply offset to entire scene =====
+  let shakeX = 0;
+  let shakeY = 0;
+  if (engine.screenShakeIntensity > 0 && engine.screenShakeDuration > 0) {
+    // Decay intensity over duration
+    const decay = engine.screenShakeDuration > 0 ? Math.min(1, engine.screenShakeDuration / 0.5) : 0;
+    const intensity = engine.screenShakeIntensity * decay;
+    shakeX = (Math.random() - 0.5) * 2 * intensity;
+    shakeY = (Math.random() - 0.5) * 2 * intensity;
+  }
+  ctx.save();
+  ctx.translate(shakeX, shakeY);
 
   // ===== background: dungeon floor (stage-themed) =====
   drawFloor(ctx, t, engine);
@@ -121,6 +134,26 @@ export function drawGame(engine: GameEngine) {
   // ===== Bone Storm (under player visuals) =====
   if (engine.player.boneStormLevel > 0) {
     drawBoneStorm(ctx, engine.player, t);
+  }
+
+  // ===== PLAYER AFTERIMAGES (phantom dash trail) =====
+  for (const ai of engine.playerAfterimages) {
+    const alpha = ai.life / ai.maxLife;
+    ctx.save();
+    ctx.globalAlpha = alpha * 0.5;
+    // ghostly silhouette
+    ctx.fillStyle = ai.color;
+    ctx.beginPath();
+    ctx.arc(ai.x, ai.y, 12, 0, Math.PI * 2);
+    ctx.fill();
+    // skull
+    ctx.fillStyle = '#ffffff';
+    ctx.globalAlpha = alpha * 0.7;
+    ctx.fillRect(ai.x - 4, ai.y - 8, 8, 6);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(ai.x - 3, ai.y - 6, 2, 2);
+    ctx.fillRect(ai.x + 1, ai.y - 6, 2, 2);
+    ctx.restore();
   }
 
   // ===== QOL: Target indicator (small crosshair on current wand target) =====
@@ -226,6 +259,9 @@ export function drawGame(engine: GameEngine) {
   if (engine.player.deathRayTimer > 0) {
     drawVignette(ctx, '#400020', 0.5);
   }
+
+  // Close screen shake transform
+  ctx.restore();
 }
 
 // ---------- background ----------
@@ -1565,14 +1601,39 @@ function drawPlayer(
   ctx.save();
   ctx.translate(p.x, p.y + bob);
 
+  // ===== Load skin palette =====
+  const skin = getSkin(p.skin);
+  const isLich = p.lichFormTimer > 0;
+  // Lich form overrides with bright pink, otherwise use skin
+  const boneColor = isLich ? '#d0c8e8' : skin.boneColor;
+  const eyeColor = isLich ? '#ff60c0' : skin.eyeColor;
+  const robeColor = isLich ? '#5a2070' : skin.robeColor;
+  const robeTrim = isLich ? '#7a3090' : skin.robeTrim;
+  const tipColor = isLich ? '#ff60c0' : skin.wandTipColor;
+
   // shadow
   ctx.fillStyle = 'rgba(0,0,0,0.4)';
   ctx.beginPath();
   ctx.ellipse(0, 18, 14, 5, 0, 0, Math.PI * 2);
   ctx.fill();
 
+  // ===== Skin aura (if defined) — pulsing colored glow around player =====
+  if (skin.auraColor && !isLich) {
+    const auraPulse = 0.5 + Math.sin(t * 3) * 0.2;
+    ctx.save();
+    ctx.globalAlpha = auraPulse * 0.4;
+    const ag = ctx.createRadialGradient(0, 0, 8, 0, 0, 32);
+    ag.addColorStop(0, skin.auraColor);
+    ag.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = ag;
+    ctx.beginPath();
+    ctx.arc(0, 0, 32, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
   // lich form aura
-  if (p.lichFormTimer > 0) {
+  if (isLich) {
     glowCircle(ctx, 0, 0, 26, '#ff60c0', 30);
   }
 
@@ -1582,20 +1643,16 @@ function drawPlayer(
   }
 
   // body (skeleton mage, slightly bigger than minions)
-  const isLich = p.lichFormTimer > 0;
-  const boneColor = isLich ? '#d0c8e8' : '#e8e0d0';
-  const eyeColor = isLich ? '#ff60c0' : '#b58cff';
-
   drawSkeletonBody(ctx, 0, 0, 16, boneColor, eyeColor, false);
 
-  // robe (purple)
-  ctx.fillStyle = isLich ? '#5a2070' : '#3a1858';
+  // robe (skin color)
+  ctx.fillStyle = robeColor;
   ctx.fillRect(-9, -2, 18, 12);
-  ctx.fillStyle = isLich ? '#7a3090' : '#5a2880';
+  ctx.fillStyle = robeTrim;
   ctx.fillRect(-9, -2, 18, 2); // trim
 
   // hood
-  ctx.fillStyle = isLich ? '#5a2070' : '#3a1858';
+  ctx.fillStyle = robeColor;
   ctx.beginPath();
   ctx.moveTo(-9, -8);
   ctx.lineTo(9, -8);
@@ -1610,11 +1667,47 @@ function drawPlayer(
   ctx.fillStyle = '#000';
   ctx.fillRect(-4, -11, 3, 3);
   ctx.fillRect(1, -11, 3, 3);
-  // glowing eyes
+  // glowing eyes (skin color)
   glowCircle(ctx, -2, -10, 2, eyeColor, 8);
   glowCircle(ctx, 2, -10, 2, eyeColor, 8);
   ctx.fillStyle = '#000';
   ctx.fillRect(-3, -6, 6, 1);
+
+  // ===== Cosmic Horror skin: stars on bones =====
+  if (skin.id === 'cosmic_horror') {
+    ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 5; i++) {
+      const sx = -7 + ((i * 13) % 14);
+      const sy = -2 + ((i * 7) % 10);
+      const tw = 0.5 + Math.sin(t * 4 + i) * 0.5;
+      ctx.globalAlpha = tw;
+      ctx.fillRect(sx, sy, 1, 1);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ===== Bone King skin: crown =====
+  if (skin.id === 'bone_king') {
+    ctx.fillStyle = '#ffd040';
+    for (let i = 0; i < 3; i++) {
+      const cx = -4 + i * 4;
+      ctx.beginPath();
+      ctx.moveTo(cx - 2, -16);
+      ctx.lineTo(cx, -20);
+      ctx.lineTo(cx + 2, -16);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // gem
+    glowCircle(ctx, 0, -18, 1.5, '#ff4040', 6);
+  }
+
+  // ===== Golden Lich skin: shoulder pauldrons =====
+  if (skin.id === 'golden_lich') {
+    ctx.fillStyle = '#ffd040';
+    ctx.fillRect(-11, -2, 3, 4);
+    ctx.fillRect(8, -2, 3, 4);
+  }
 
   // crooked wand (held to side)
   ctx.save();
@@ -1630,10 +1723,16 @@ function drawPlayer(
   ctx.lineTo(-1, -14);
   ctx.lineTo(3, -22);
   ctx.stroke();
-  // glowing tip
-  const tipColor = engine.wandColor();
+  // glowing tip (skin-colored)
   glowCircle(ctx, 3, -22, 5, tipColor, 18);
   glowCircle(ctx, 3, -22, 2.5, '#ffffff', 8);
+  // ===== Wand tip sparkle =====
+  const sparkle = Math.sin(t * 10);
+  if (sparkle > 0.7) {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(6, -24, 1, 1);
+    ctx.fillRect(0, -20, 1, 1);
+  }
   ctx.restore();
 
   ctx.restore();
@@ -1667,14 +1766,37 @@ function drawProjectile(
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(-20, -pr.radius / 4, 30, pr.radius / 2);
   } else if (pr.kind === 'deathray') {
-    // huge beam
+    // ===== IMPROVED Death Ray: glowing beam with electric arcs =====
+    const t = performance.now() / 1000;
+    // outer glow beam
     ctx.fillStyle = pr.color;
     ctx.shadowColor = pr.color;
     ctx.shadowBlur = 30;
-    ctx.fillRect(-40, -pr.radius / 2, 60, pr.radius);
+    ctx.fillRect(-50, -pr.radius / 2, 70, pr.radius);
+    // inner white core
     ctx.fillStyle = '#ffffff';
     ctx.shadowBlur = 14;
-    ctx.fillRect(-40, -pr.radius / 4, 60, pr.radius / 2);
+    ctx.fillRect(-50, -pr.radius / 4, 70, pr.radius / 2);
+    ctx.shadowBlur = 0;
+    // electric arcs (jagged lines around beam)
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.8;
+    for (let i = 0; i < 3; i++) {
+      const yOffset = (i - 1) * pr.radius * 0.4;
+      ctx.beginPath();
+      ctx.moveTo(-40, yOffset);
+      let cx = -40;
+      while (cx < 20) {
+        cx += 6 + Math.random() * 4;
+        const ay = yOffset + (Math.random() - 0.5) * 8;
+        ctx.lineTo(cx, ay);
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    // bright tip
+    glowCircle(ctx, 25, 0, pr.radius * 0.6, '#ffffff', 18);
   } else if (pr.kind === 'familiar') {
     glowCircle(ctx, 0, 0, pr.radius, pr.color, 12);
     glowCircle(ctx, 0, 0, pr.radius * 0.5, '#ffffff', 6);
@@ -1942,6 +2064,35 @@ function drawBlackHole(
   ctx.beginPath();
   ctx.arc(bh.x, bh.y, bh.radius + 3, 0, Math.PI * 2);
   ctx.stroke();
+
+  // ===== IMPROVED: Rotating spiral arms =====
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#ff80ff';
+  ctx.lineWidth = 2;
+  ctx.globalAlpha = 0.7;
+  for (let i = 0; i < 3; i++) {
+    const armOffset = (i / 3) * Math.PI * 2 + t * 2;
+    ctx.beginPath();
+    for (let r = bh.radius + 4; r < bh.pullRadius * 0.8; r += 2) {
+      const ang = armOffset + r * 0.05;
+      const px = bh.x + Math.cos(ang) * r;
+      const py = bh.y + Math.sin(ang) * r;
+      if (r === bh.radius + 4) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  }
+
+  // ===== IMPROVED: Orbiting debris particles =====
+  ctx.globalAlpha = 0.9;
+  for (let i = 0; i < 6; i++) {
+    const orbitAng = t * 4 + (i / 6) * Math.PI * 2;
+    const orbitR = bh.radius + 6 + (i % 3) * 4;
+    const dx = bh.x + Math.cos(orbitAng) * orbitR;
+    const dy = bh.y + Math.sin(orbitAng) * orbitR;
+    ctx.fillStyle = i % 2 === 0 ? '#ff80ff' : '#c060ff';
+    ctx.fillRect(dx - 1, dy - 1, 2, 2);
+  }
   ctx.restore();
 }
 
@@ -1999,14 +2150,25 @@ function drawMeteor(
   if (m.exploded) return;
   ctx.save();
   ctx.translate(m.x, m.y);
-  // trailing flame
-  ctx.fillStyle = 'rgba(255, 120, 30, 0.4)';
+  // ===== IMPROVED: Long fiery trail =====
+  // outer flame trail
+  ctx.fillStyle = 'rgba(255, 80, 20, 0.3)';
   ctx.beginPath();
-  ctx.ellipse(0, -20, m.radius * 0.6, m.radius * 1.8, 0, 0, Math.PI * 2);
+  ctx.ellipse(0, -30, m.radius * 0.5, m.radius * 2.5, 0, 0, Math.PI * 2);
   ctx.fill();
-  // meteor core
-  glowCircle(ctx, 0, 0, m.radius, '#ff6020', 20);
-  glowCircle(ctx, 0, 0, m.radius * 0.7, '#ffa040', 14);
+  // middle flame trail
+  ctx.fillStyle = 'rgba(255, 140, 40, 0.5)';
+  ctx.beginPath();
+  ctx.ellipse(0, -22, m.radius * 0.4, m.radius * 1.8, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // inner bright trail
+  ctx.fillStyle = 'rgba(255, 220, 80, 0.7)';
+  ctx.beginPath();
+  ctx.ellipse(0, -14, m.radius * 0.3, m.radius * 1.0, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // meteor core with glow
+  glowCircle(ctx, 0, 0, m.radius, '#ff6020', 24);
+  glowCircle(ctx, 0, 0, m.radius * 0.7, '#ffa040', 16);
   ctx.fillStyle = '#ffd060';
   ctx.beginPath();
   ctx.arc(0, 0, m.radius * 0.4, 0, Math.PI * 2);
@@ -2015,6 +2177,15 @@ function drawMeteor(
   ctx.fillStyle = '#804020';
   ctx.fillRect(-m.radius * 0.3, -m.radius * 0.2, m.radius * 0.4, m.radius * 0.3);
   ctx.fillRect(m.radius * 0.1, m.radius * 0.1, m.radius * 0.3, m.radius * 0.2);
+  // ===== IMPROVED: Trail sparks =====
+  for (let i = 0; i < 3; i++) {
+    const sparkY = -10 - i * 8;
+    const sparkX = (Math.random() - 0.5) * m.radius * 0.5;
+    ctx.fillStyle = i === 0 ? '#ffffff' : '#ffd040';
+    ctx.globalAlpha = 0.8 - i * 0.2;
+    ctx.fillRect(sparkX, sparkY, 1, 1);
+  }
+  ctx.globalAlpha = 1;
   ctx.restore();
 }
 

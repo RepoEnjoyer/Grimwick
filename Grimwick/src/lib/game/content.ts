@@ -32,6 +32,7 @@ export function createStartingPlayer(permanentBonuses: {
   stage2Health?: number;
   stage2EliteResist?: number;
   stage2SoulMult?: number;
+  skin?: string;
 }): Player {
   // Stage 2 damage multiplier: +5% per level (applies to wand + minion damage)
   const stage2DmgMult = 1 + (permanentBonuses.stage2Damage ?? 0) * 0.05;
@@ -169,6 +170,7 @@ export function createStartingPlayer(permanentBonuses: {
     kills: 0,
     soulsCollected: 0,
     wandType: permanentBonuses.wandType,
+    skin: permanentBonuses.skin ?? 'default',
   };
 }
 
@@ -1323,6 +1325,111 @@ export const UPGRADES: Upgrade[] = [
   },
 ];
 
+// ---------- Skins ----------
+import type { SkinDef } from './types';
+
+export const SKINS: SkinDef[] = [
+  {
+    id: 'default',
+    name: 'Grimwick the Failed',
+    description: 'The original necromancer. Purple robe, glowing violet eyes.',
+    boneColor: '#e8e0d0',
+    robeColor: '#3a1858',
+    robeTrim: '#5a2880',
+    eyeColor: '#b58cff',
+    wandTipColor: '#b58cff',
+    unlockHint: 'Default skin — always available',
+  },
+  {
+    id: 'golden_lich',
+    name: 'Golden Lich',
+    description: 'Gilded bones and royal regalia. Earned by clearing The Crypt.',
+    boneColor: '#ffe8a0',
+    robeColor: '#604010',
+    robeTrim: '#ffd040',
+    eyeColor: '#ffd040',
+    wandTipColor: '#ffd040',
+    auraColor: '#ffd040',
+    unlockHint: 'Clear The Crypt (defeat Bone Dragon)',
+  },
+  {
+    id: 'void_walker',
+    name: 'Void Walker',
+    description: 'Twisted by the void. Glowing purple aura, dark bones.',
+    boneColor: '#a0a0c0',
+    robeColor: '#1a0030',
+    robeTrim: '#a040ff',
+    eyeColor: '#ff40ff',
+    wandTipColor: '#a040ff',
+    auraColor: '#a040ff',
+    unlockHint: 'Clear The Void Depths (defeat Void Leviathan)',
+  },
+  {
+    id: 'bone_king',
+    name: 'Bone King',
+    description: 'Crowned ruler of the dead. White bones, regal crimson.',
+    boneColor: '#ffffff',
+    robeColor: '#600818',
+    robeTrim: '#c04060',
+    eyeColor: '#ff4060',
+    wandTipColor: '#ff4060',
+    auraColor: '#ff4060',
+    unlockHint: 'Clear The Abyssal Throne (defeat Lich King)',
+  },
+  {
+    id: 'frost_mage',
+    name: 'Frost Mage',
+    description: 'Icy necromancer with crystalline bones. Cyan glow.',
+    boneColor: '#c0e0ff',
+    robeColor: '#103040',
+    robeTrim: '#40c0ff',
+    eyeColor: '#80e0ff',
+    wandTipColor: '#40c0ff',
+    auraColor: '#40c0ff',
+    unlockHint: 'Buy from Crypt Hub (500 soul shards)',
+  },
+  {
+    id: 'shadow_reaper',
+    name: 'Shadow Reaper',
+    description: 'Pure darkness given form. Black bones, sickle-green eyes.',
+    boneColor: '#202028',
+    robeColor: '#000000',
+    robeTrim: '#208040',
+    eyeColor: '#80ff40',
+    wandTipColor: '#80ff40',
+    auraColor: '#208040',
+    unlockHint: 'Buy from Crypt Hub (1000 soul shards)',
+  },
+  {
+    id: 'blood_mage',
+    name: 'Blood Mage',
+    description: 'Vampiric necromancer. Crimson bones, blood-red aura.',
+    boneColor: '#c08080',
+    robeColor: '#400810',
+    robeTrim: '#c00020',
+    eyeColor: '#ff2040',
+    wandTipColor: '#ff2040',
+    auraColor: '#ff2040',
+    unlockHint: 'Buy from Crypt Hub (1500 soul shards)',
+  },
+  {
+    id: 'cosmic_horror',
+    name: 'Cosmic Horror',
+    description: 'Eldritch abomination. Star-filled bones, rainbow aura.',
+    boneColor: '#402060',
+    robeColor: '#100020',
+    robeTrim: '#ff80ff',
+    eyeColor: '#ffff80',
+    wandTipColor: '#ff80ff',
+    auraColor: '#ff80ff',
+    unlockHint: 'Buy from Crypt Hub (3000 soul shards) — Ultimate skin',
+  },
+];
+
+export function getSkin(id: string): SkinDef {
+  return SKINS.find((s) => s.id === id) ?? SKINS[0];
+}
+
 // ---------- Relics ----------
 export const RELICS: Relic[] = [
   {
@@ -1463,6 +1570,76 @@ export const RELICS: Relic[] = [
     icon: '♥',
     apply: (p) => {
       p.skills.add('undying_heart');
+    },
+  },
+  // ===== NEW RELICS =====
+  {
+    id: 'soul_battery_relic',
+    name: 'Soul Battery',
+    description: 'Soul meter fills 50% faster. More frequent Soul Novas.',
+    rarity: 'rare',
+    icon: '🔋',
+    apply: (p) => {
+      p.soulMeterMax = Math.max(10, Math.floor(p.soulMeterMax * 0.66));
+    },
+  },
+  {
+    id: 'wand_master',
+    name: 'Wand Master',
+    description: '+25% fire rate, +15% projectile speed. Pure wand power.',
+    rarity: 'rare',
+    icon: '🎯',
+    apply: (p) => {
+      p.fireRate *= 1.25;
+      p.projectileSpeed *= 1.15;
+      p.wandLevel += 1;
+    },
+  },
+  {
+    id: 'twin_wands',
+    name: 'Twin Wands',
+    description: '+1 projectile. Fires in a wider spread.',
+    rarity: 'epic',
+    icon: '🔫',
+    apply: (p) => {
+      p.projectileCount += 1;
+      p.projectileSpread = Math.max(p.projectileSpread, 0.18);
+      p.wandLevel += 1;
+    },
+  },
+  {
+    id: 'bone_armor_relic',
+    name: 'Bone Armor',
+    description: '+60 max HP, +3 iron bones (flat damage reduction).',
+    rarity: 'rare',
+    icon: '🛡',
+    apply: (p) => {
+      p.maxHp += 60;
+      p.hp += 60;
+      p.ironBonesLevel += 3;
+    },
+  },
+  {
+    id: 'soul_magnet_relic',
+    name: 'Soul Magnet',
+    description: 'Triple soul pickup range. Never miss a soul again.',
+    rarity: 'common',
+    icon: '🧲',
+    apply: (p) => {
+      p.soulPickupRange *= 3;
+      p.soulGainMult *= 1.1;
+    },
+  },
+  {
+    id: 'berserker_crown',
+    name: 'Berserker Crown',
+    description: '+40% damage, -30 max HP. High risk, high reward.',
+    rarity: 'epic',
+    icon: '👑',
+    apply: (p) => {
+      p.damage *= 1.4;
+      p.maxHp = Math.max(20, p.maxHp - 30);
+      p.hp = Math.min(p.hp, p.maxHp);
     },
   },
 ];

@@ -864,3 +864,108 @@ Stage Summary:
 - NECROMINION TAB: New main menu tab for offline soul farming. Generates souls passively (10/hr base), stores up to cap (100 base), converts to shards at 50% base. 4 upgrades to improve rate/cap/efficiency/auto-collect. Auto-collects when threshold met if Auto Harvester upgraded.
 - STAGE 2 UPGRADES: 4 new upgrades in Crypt Hub, locked until Void zone is unlocked. Provide the power needed for Void/Abyss difficulty: +40% damage, +180 HP, -50% elite damage, +100% soul gain at max levels. Balanced costs (100+ per level) to require farming.
 - All systems verified end-to-end via Agent Browser, no errors
+
+---
+Task ID: 10
+Agent: main (super-z)
+Task: Major update — add skins system, screen shake, hit-stop, ability VFX overhaul, phantom dash afterimages, new relics, new wand types, skin shop. Biggest update yet.
+
+Work Log:
+
+- SKINS SYSTEM (8 skins):
+  - Added SkinDef interface in types.ts: id, name, description, boneColor, robeColor, robeTrim, eyeColor, wandTipColor, unlockHint, auraColor
+  - Added SKINS array in content.ts with 8 skins:
+    * default (Grimwick the Failed) — always unlocked
+    * golden_lich — earned by clearing Crypt (auto-unlocked via unlockZone)
+    * void_walker — earned by clearing Void
+    * bone_king — earned by clearing Abyss
+    * frost_mage — buy for 500 shards
+    * shadow_reaper — buy for 1000 shards
+    * blood_mage — buy for 1500 shards
+    * cosmic_horror — buy for 3000 shards (ultimate)
+  - Added getSkin() helper
+  - Added skin field to Player type
+  - Updated createStartingPlayer to accept and set skin
+  - Updated engine permanentBonuses + constructor to accept skin
+  - Updated GameCanvas buildBonuses to pass selectedSkin
+  - Added selectedSkin state in GameCanvas
+  - Updated StartScreen with skin selection UI (8 buttons with locked/unlocked state, selected skin description)
+  - Updated unlockZone to auto-unlock zone-themed skin (Golden Lich, Void Walker, Bone King)
+  - Added buySkin() in persistence.ts
+  - Added SkinShop component in CryptHub with color swatches, buy buttons, and earnable skins info panel
+
+- SCREEN SHAKE & HIT-STOP:
+  - Added screenShakeIntensity, screenShakeDuration, hitStopTimer fields to engine
+  - Added triggerScreenShake(intensity, duration) and triggerHitStop(duration) methods
+  - Updated update() to skip game updates during hit-stop (only ticks timer + shake decay)
+  - Updated drawGame() in render.ts to apply shake offset via ctx.translate
+  - Triggers:
+    * Crits: shake 3/0.15s, hit-stop 0.04s
+    * Boss death: shake 15/0.6s, hit-stop 0.2s
+    * Soul Nova: shake 8/0.4s
+    * Earthquake: shake 12/0.5s, hit-stop 0.08s
+    * Meteor impact: shake 6/0.3s
+    * Lich Form: shake 10/0.5s, hit-stop 0.15s
+    * Army of the Dead: shake 8/0.4s, hit-stop 0.1s
+    * Death Ray: shake 6/0.3s
+    * Phantom Dash: shake 2/0.1s
+    * Player damage: shake scales with damage (2-10 intensity, 0.25s)
+
+- ABILITY VFX OVERHAUL:
+  - Death Ray: glowing beam with 3 jagged electric arcs, bright tip
+  - Black Hole: rotating spiral arms (3 arms), orbiting debris particles, accretion disk
+  - Meteor: 3-layer fiery trail (outer/middle/inner), trail sparks
+  - Lich Form cast: 24-particle bone shard ring + 30-particle magic ring expansion
+  - Army of the Dead cast: 16 rising skeleton hands (bone particles erupting upward) + magical glow + 6 army minions summoned immediately
+  - Death Ray cast: 20 charge-up particles converging on player
+  - Phantom Dash: 5 afterimages spawned with skin-colored trail
+
+- PHANTOM DASH AFTERIMAGES:
+  - Added playerAfterimages array to engine
+  - Updated tryDash to spawn 5 afterimages with skin eye color
+  - Added afterimage ticking in updatePlayer (life decays, removed when life <= 0)
+  - Added afterimage rendering in render.ts: ghostly silhouette + skull, fading alpha
+  - Reset on startRun
+
+- PLAYER SKIN RENDERING:
+  - Updated drawPlayer to load skin palette via getSkin(p.skin)
+  - Skin colors override bone/robe/eye/wand tip (Lich Form still overrides to pink)
+  - Skin aura: pulsing colored glow around player (if auraColor defined)
+  - Skin-specific extras:
+    * Cosmic Horror: twinkling stars on bones
+    * Bone King: golden crown with red gem
+    * Golden Lich: golden shoulder pauldrons
+  - Wand tip sparkle animation
+  - Updated wandColor() to use skin color (unless default skin), then wand type
+
+- NEW WAND TYPES (3 new, 6 total):
+  - Void Wand — unlocked at Wand Power level 8 (purple)
+  - Abyss Wand — unlocked at Stage 2 Damage level 5 (red)
+  - Cosmic Wand — unlocked at Stage 2 Damage level 8 (pink)
+  - Updated wandColor() with all 6 wand colors
+  - Updated buyUpgrade in persistence.ts to unlock new wands at thresholds
+
+- NEW RELICS (6 new):
+  - Soul Battery: soul meter fills 50% faster
+  - Wand Master: +25% fire rate, +15% projectile speed
+  - Twin Wands: +1 projectile, wider spread (epic)
+  - Bone Armor: +60 HP, +3 iron bones
+  - Soul Magnet: 3x pickup range, +10% soul gain
+  - Berserker Crown: +40% damage, -30 HP (epic, high risk/reward)
+
+- VERIFIED via Agent Browser:
+  - 8 skins visible in StartScreen (5 unlocked, 3 locked)
+  - 6 wand types visible
+  - Selected Void Walker skin → started run → skin: 'void_walker', HP 190/220
+  - Crypt Hub Skin Shop shows 4 purchasable skins with color swatches
+  - Bought Blood Mage skin: 10000 → 8500 shards, unlockedSkins includes "Blood Mage"
+  - No console errors, TypeScript clean, ESLint clean
+
+Stage Summary:
+- 8 SKINS: Default, Golden Lich (clear Crypt), Void Walker (clear Void), Bone King (clear Abyss), Frost Mage (500 shards), Shadow Reaper (1000 shards), Blood Mage (1500 shards), Cosmic Horror (3000 shards). Each has unique color palette + aura. 3 skins earned via zone clears, 4 purchasable in Crypt Hub Skin Shop, 1 default.
+- SCREEN SHAKE + HIT-STOP: Dynamic impact feedback on crits, boss kills, ability casts, and player damage. Makes combat feel weighty and satisfying.
+- ABILITY VFX OVERHAUL: Death Ray (electric arcs), Black Hole (spiral arms + debris), Meteor (3-layer trail), Lich Form (transformation ring), Army of the Dead (rising hands + immediate summon), Death Ray cast (charge-up), Soul Nova (shockwave), Earthquake (big shake).
+- PHANTOM DASH AFTERIMAGES: Ghostly trail of 5 afterimages when dashing, colored to match skin.
+- 3 NEW WAND TYPES: Void Wand (purple), Abyss Wand (red), Cosmic Wand (pink) — unlocked via Wand Power and Stage 2 Damage levels.
+- 6 NEW RELICS: Soul Battery, Wand Master, Twin Wands, Bone Armor, Soul Magnet, Berserker Crown.
+- All systems verified end-to-end via Agent Browser, no errors

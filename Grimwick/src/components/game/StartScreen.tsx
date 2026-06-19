@@ -1,6 +1,7 @@
 'use client';
 
 import type { PermanentProgress } from '@/lib/game/persistence';
+import { SKINS } from '@/lib/game/content';
 
 type Zone = 'crypt' | 'void' | 'abyss';
 
@@ -14,6 +15,9 @@ interface Props {
   selectedZone: Zone;
   onZoneChange: (z: Zone) => void;
   unlockedZones: string[];
+  selectedSkin: string;
+  onSkinChange: (s: string) => void;
+  unlockedSkins: string[];
 }
 
 const ZONE_INFO: Record<Zone, { name: string; subtitle: string; color: string; description: string; bossName: string; roomRange: string }> = {
@@ -53,6 +57,9 @@ export function StartScreen({
   selectedZone,
   onZoneChange,
   unlockedZones,
+  selectedSkin,
+  onSkinChange,
+  unlockedSkins,
 }: Props) {
   const isUnlocked = (z: Zone) => unlockedZones.includes(z.charAt(0).toUpperCase() + z.slice(1));
   return (
@@ -138,7 +145,7 @@ export function StartScreen({
       </div>
 
       {/* Wand selection */}
-      <div className="flex flex-col items-center gap-2 mb-6">
+      <div className="flex flex-col items-center gap-2 mb-4">
         <div className="text-[10px] uppercase tracking-widest text-zinc-500">
           Select Wand
         </div>
@@ -156,6 +163,54 @@ export function StartScreen({
               {w}
             </button>
           ))}
+        </div>
+      </div>
+
+      {/* ===== SKIN SELECTION ===== */}
+      <div className="flex flex-col items-center gap-2 mb-6">
+        <div className="text-[10px] uppercase tracking-widest text-zinc-500">
+          Select Skin
+        </div>
+        <div className="flex gap-2 flex-wrap justify-center max-w-2xl">
+          {SKINS.map((skin) => {
+            // Map skin id to display name for unlock check
+            const skinDisplayName = skin.name;
+            const isUnlockedSkin = unlockedSkins.includes(skinDisplayName) || skin.id === 'default';
+            const isSelected = selectedSkin === skin.id;
+            return (
+              <button
+                key={skin.id}
+                disabled={!isUnlockedSkin}
+                onClick={() => isUnlockedSkin && onSkinChange(skin.id)}
+                title={isUnlockedSkin ? `${skin.name} — ${skin.description}` : `Locked: ${skin.unlockHint}`}
+                className={`relative px-3 py-1.5 text-xs border-2 rounded-sm transition-all min-w-[100px] ${
+                  isSelected
+                    ? 'bg-zinc-900/80'
+                    : isUnlockedSkin
+                      ? 'bg-zinc-900/40 border-zinc-700 text-zinc-300 hover:border-zinc-500'
+                      : 'bg-zinc-950/80 border-zinc-800 text-zinc-600 cursor-not-allowed'
+                }`}
+                style={
+                  isSelected
+                    ? {
+                        borderColor: skin.eyeColor,
+                        color: skin.eyeColor,
+                        boxShadow: `0 0 12px ${skin.eyeColor}66, inset 0 0 6px ${skin.eyeColor}22`,
+                      }
+                    : {}
+                }
+              >
+                <div className="font-bold">{skin.name}</div>
+                {!isUnlockedSkin && (
+                  <div className="text-[9px] text-zinc-600 mt-0.5">🔒</div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {/* Selected skin description */}
+        <div className="text-center text-[10px] text-zinc-400 max-w-md mt-1 italic min-h-[14px]">
+          {SKINS.find((s) => s.id === selectedSkin)?.description}
         </div>
       </div>
 

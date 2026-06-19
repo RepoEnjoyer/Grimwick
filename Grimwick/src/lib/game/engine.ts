@@ -12,6 +12,7 @@ import {
   enemyDamageScale,
   enemyHpScale,
   generateWave,
+  getSkin,
   getStage,
   rollEliteAffixes,
   wavesPerRoom,
@@ -164,6 +165,12 @@ export class GameEngine {
   damageTaken = 0; // total damage taken this run
   damageDealt = 0; // total damage dealt this run
   currentTargetId: number | null = null; // current wand target enemy id
+  // ===== SCREEN SHAKE & HIT-STOP =====
+  screenShakeIntensity = 0; // current shake intensity (decays over time)
+  screenShakeDuration = 0; // remaining shake duration (seconds)
+  hitStopTimer = 0; // brief freeze on big hits (seconds)
+  // ===== PLAYER AFTERIMAGES (for phantom dash trail) =====
+  playerAfterimages: { x: number; y: number; life: number; maxLife: number; color: string }[] = [];
 
   permanentBonuses: {
     healthBonus: number;
@@ -189,6 +196,8 @@ export class GameEngine {
     stage2Health: number;
     stage2EliteResist: number;
     stage2SoulMult: number;
+    // Skin
+    skin: string;
   };
 
   extraLivesRemaining = 0; // runtime counter for extra lives
@@ -218,6 +227,7 @@ export class GameEngine {
       stage2Health: number;
       stage2EliteResist: number;
       stage2SoulMult: number;
+      skin: string;
     },
     startingZone: 'crypt' | 'void' | 'abyss' = 'crypt'
   ) {
@@ -290,6 +300,10 @@ export class GameEngine {
     this.damageDealt = 0;
     this.currentTargetId = null;
     this.gameTime = 0;
+    this.playerAfterimages = [];
+    this.screenShakeIntensity = 0;
+    this.screenShakeDuration = 0;
+    this.hitStopTimer = 0;
     this.setPhase('playing');
     this.startNextRoom();
     this.emitHud();
@@ -396,6 +410,16 @@ export class GameEngine {
   // ---------------- update ----------------
   update(dt: number) {
     this.gameTime += dt;
+    // ===== HIT-STOP: brief freeze on big hits — skip update but still tick timer =====
+    if (this.hitStopTimer > 0) {
+      this.hitStopTimer -= dt;
+      // Decay screen shake during hit-stop
+      if (this.screenShakeDuration > 0) {
+        this.screenShakeDuration -= dt;
+        if (this.screenShakeDuration <= 0) this.screenShakeIntensity = 0;
+      }
+      return;
+    }
     this.updatePlayer(dt);
     this.updateProjectiles(dt);
     this.updateEnemies(dt);
@@ -411,6 +435,21 @@ export class GameEngine {
     this.updateSpawns(dt);
     this.updateWaves(dt);
     this.updateBoss(dt);
+    // Decay screen shake
+    if (this.screenShakeDuration > 0) {
+      this.screenShakeDuration -= dt;
+      if (this.screenShakeDuration <= 0) this.screenShakeIntensity = 0;
+    }
+  }
+
+  // ===== SCREEN SHAKE & HIT-STOP helpers =====
+  triggerScreenShake(intensity: number, duration: number) {
+    this.screenShakeIntensity = Math.max(this.screenShakeIntensity, intensity);
+    this.screenShakeDuration = Math.max(this.screenShakeDuration, duration);
+  }
+
+  triggerHitStop(duration: number) {
+    this.hitStopTimer = Math.max(this.hitStopTimer, duration);
   }
 
   // ---------------- player ----------------
@@ -458,6 +497,13 @@ export class GameEngine {
     }
     // bloodlust timer countdown
     if (this.bloodlustTimer > 0) this.bloodlustTimer -= dt;
+    // afterimage trail countdown
+    for (let i = this.playerAfterimages.length - 1; i >= 0; i--) {
+      this.playerAfterimages[i].life -= dt;
+      if (this.playerAfterimages[i].life <= 0) {
+        this.playerAfterimages.splice(i, 1);
+      }
+    }
 
     // ultimates countdown
     if (p.armyOfDeadTimer > 0) p.armyOfDeadTimer -= dt;
@@ -794,6 +840,44 @@ export class GameEngine {
     p.armyOfDeadTimer = 8;
     p.armyOfDeadCooldown = 40;
     this.spawnFloatingText(p.x, p.y - 40, 'ARMY OF THE DEAD!', '#b58cff');
+    // VFX: rising skeleton hands from ground in a circle around player
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      const r = 60 + Math.random() * 40;
+      const hx = p.x + Math.cos(a) * r;
+      const hy = p.y + Math.sin(a) * r;
+      // bone shard particles erupting upward
+      this.particles.push({
+        x: hx,
+        y: hy,
+        vx: (Math.random() - 0.5) * 60,
+        vy: -100 - Math.random() * 80,
+        life: 0.8,
+        maxLife: 0.8,
+        radius: 3,
+        color: '#c8c0a8',
+        kind: 'bone',
+      });
+      // magical glow
+      this.particles.push({
+        x: hx,
+        y: hy,
+        vx: 0,
+        vy: 0,
+        life: 0.6,
+        maxLife: 0.6,
+        radius: 4,
+        color: '#b58cff',
+        kind: 'magic',
+      });
+    }
+    // Summon 6 skeleton minions immediately
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      this.spawnMinion('army', p.x + Math.cos(a) * 50, p.y + Math.sin(a) * 50, 8);
+    }
+    this.triggerScreenShake(8, 0.4);
+    this.triggerHitStop(0.1);
   }
 
   castDeathRay() {
@@ -801,6 +885,23 @@ export class GameEngine {
     p.deathRayTimer = 2;
     p.deathRayCooldown = 25;
     this.spawnFloatingText(p.x, p.y - 40, 'DEATH RAY!', '#ff4080');
+    // VFX: charge-up particles converging on player
+    for (let i = 0; i < 20; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 80 + Math.random() * 60;
+      this.particles.push({
+        x: p.x + Math.cos(a) * r,
+        y: p.y + Math.sin(a) * r,
+        vx: -Math.cos(a) * 200,
+        vy: -Math.sin(a) * 200,
+        life: 0.4,
+        maxLife: 0.4,
+        radius: 3,
+        color: '#ff4080',
+        kind: 'magic',
+      });
+    }
+    this.triggerScreenShake(6, 0.3);
   }
 
   castLichForm() {
@@ -812,6 +913,38 @@ export class GameEngine {
     if (p.soulDrainChance > 0) p.soulDrainChance *= 2;
     this.spawnFloatingText(p.x, p.y - 40, 'LICH FORM!', '#ff60c0');
     this.spawnParticles(p.x, p.y, 30, '#ff60c0', 'magic', 1);
+    // VFX: big transformation effect — expanding ring of bone shards + screen shake
+    for (let i = 0; i < 24; i++) {
+      const a = (i / 24) * Math.PI * 2;
+      this.particles.push({
+        x: p.x,
+        y: p.y,
+        vx: Math.cos(a) * 300,
+        vy: Math.sin(a) * 300,
+        life: 0.8,
+        maxLife: 0.8,
+        radius: 4,
+        color: '#ff60c0',
+        kind: 'bone',
+      });
+    }
+    // Expanding magic ring
+    for (let i = 0; i < 30; i++) {
+      const a = (i / 30) * Math.PI * 2;
+      this.particles.push({
+        x: p.x,
+        y: p.y,
+        vx: Math.cos(a) * 200,
+        vy: Math.sin(a) * 200,
+        life: 0.6,
+        maxLife: 0.6,
+        radius: 3,
+        color: '#ffffff',
+        kind: 'magic',
+      });
+    }
+    this.triggerScreenShake(10, 0.5);
+    this.triggerHitStop(0.15);
   }
 
   triggerSoulNova() {
@@ -841,6 +974,8 @@ export class GameEngine {
       });
     }
     this.spawnFloatingText(p.x, p.y - 40, 'SOUL NOVA!', '#b58cff');
+    // VFX: screen shake on soul nova
+    this.triggerScreenShake(8, 0.4);
     // brief iframes
     p.iframes = Math.max(p.iframes, 0.5);
     // Twin Souls: trigger a 2nd nova at 50% damage after a short delay
@@ -959,6 +1094,9 @@ export class GameEngine {
       e.slowTimer = 1;
       e.slowMult = 0.3;
     }
+    // VFX: big screen shake on earthquake
+    this.triggerScreenShake(12, 0.5);
+    this.triggerHitStop(0.08);
     // visual shockwave
     for (let i = 0; i < 40; i++) {
       const a = (i / 40) * Math.PI * 2;
@@ -1166,9 +1304,15 @@ export class GameEngine {
   }
 
   wandColor(): string {
+    // Skin color takes priority (unless default skin), then wand type
+    const skin = getSkin(this.player.skin);
+    if (skin && this.player.skin !== 'default') return skin.wandTipColor;
     const t = this.player.wandType;
     if (t === 'Grave Wand') return '#6affb5';
     if (t === 'Lich Wand') return '#ff6ab5';
+    if (t === 'Void Wand') return '#a040ff';
+    if (t === 'Abyss Wand') return '#ff4040';
+    if (t === 'Cosmic Wand') return '#ff80ff';
     return '#b58cff';
   }
 
@@ -1371,6 +1515,9 @@ export class GameEngine {
           if (pr.isCrit) {
             this.spawnFloatingText(e.x, e.y - 20, 'CRIT!', '#ffd040');
             this.spawnParticles(e.x, e.y, 8, '#ffd040', 'spark', 0.4);
+            // VFX: brief hit-stop + screen shake on crit
+            this.triggerHitStop(0.04);
+            this.triggerScreenShake(3, 0.15);
             // COMBO: Crit Cascade — crits also fire a chain lightning bolt
             if (this.player.critCascadeActive) {
               const target = this.findNearestEnemy(e.x, e.y, 200, new Set([e.id]));
@@ -2907,6 +3054,8 @@ export class GameEngine {
           // explode — damage all enemies in radius
           this.spawnParticles(m.targetX, m.targetY, 30, '#ff6020', 'spark', 0.6);
           this.spawnParticles(m.targetX, m.targetY, 12, '#ffd040', 'spark', 0.4);
+          // VFX: screen shake on meteor impact
+          this.triggerScreenShake(6, 0.3);
           for (const e of this.enemies) {
             const d = Math.hypot(e.x - m.targetX, e.y - m.targetY);
             if (d < m.radius * 2.5) {
@@ -3636,6 +3785,9 @@ export class GameEngine {
     if (e.isBoss) {
       this.spawnParticles(e.x, e.y, 60, '#ffd060', 'spark', 1.5);
       this.spawnFloatingText(e.x, e.y - 60, 'BOSS DEFEATED!', '#ffd060');
+      // VFX: massive screen shake + hit-stop on boss kill
+      this.triggerScreenShake(15, 0.6);
+      this.triggerHitStop(0.2);
       // big soul drop
       for (let i = 0; i < 12; i++) {
         const a = Math.random() * Math.PI * 2;
@@ -3743,6 +3895,9 @@ export class GameEngine {
     p.iframes = 0.5 + (this.permanentBonuses.iframeBonus ?? 0) * 0.1;
     this.spawnParticles(p.x, p.y, 8, '#ff6060', 'spark', 0.4);
     this.spawnFloatingText(p.x, p.y - 24, `-${Math.round(dmg)}`, '#ff8080');
+    // VFX: screen shake when player takes damage (scales with damage)
+    const shakeIntensity = Math.min(10, 2 + finalDmg * 0.15);
+    this.triggerScreenShake(shakeIntensity, 0.25);
 
     // Crown of Thorns: attacker takes recoil damage
     if (p.skills.has('crown_of_thorns') && attacker) {
@@ -4202,6 +4357,18 @@ export class GameEngine {
     p.dashCooldownTimer = p.dashCooldown;
     p.iframes = 0.25;
     this.spawnParticles(p.x, p.y, 12, '#b58cff', 'magic', 0.4);
+    // VFX: spawn afterimages for dash trail
+    const skinColor = getSkin(p.skin).eyeColor;
+    for (let i = 0; i < 5; i++) {
+      this.playerAfterimages.push({
+        x: p.x,
+        y: p.y,
+        life: 0.3 - i * 0.05,
+        maxLife: 0.3,
+        color: skinColor,
+      });
+    }
+    this.triggerScreenShake(2, 0.1);
   }
 
   spawnDeathRayShot() {
