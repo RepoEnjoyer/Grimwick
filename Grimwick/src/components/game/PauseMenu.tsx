@@ -12,23 +12,10 @@ interface BuildSummary {
   minions: number;
   maxMinions: number;
   room: number;
-  zone: 'crypt' | 'void' | 'abyss';
   wave: string;
   skills: string[];
   relics: { id: string; name: string; icon: string; description: string }[];
-  // QOL: extended stats
-  timeSurvived: number;
-  damageTaken: number;
-  damageDealt: number;
-  elitesKilled: number;
-  maxCombo: number;
 }
-
-const ZONE_LABELS: Record<'crypt' | 'void' | 'abyss', string> = {
-  crypt: 'THE CRYPT',
-  void: 'THE VOID DEPTHS',
-  abyss: 'THE ABYSSAL THRONE',
-};
 
 interface Props {
   getSummary: () => BuildSummary;
@@ -110,23 +97,6 @@ const SKILL_NAMES: Record<string, string> = {
   soul_magnet_aura: 'Soul Magnet Aura',
   overcharge: 'Overcharge',
   twin_souls: 'Twin Souls',
-  // ===== NEW COMBO SKILLS =====
-  soul_resonance: 'Soul Resonance',
-  frostbite_curse: 'Frostbite Curse',
-  chain_reaction: 'Chain Reaction',
-  bone_storm_surge: 'Bone Storm Surge',
-  vampiric_hunger: 'Vampiric Hunger',
-  soul_battery_overload: 'Soul Battery Overload',
-  grave_echo: 'Grave Echo',
-  phantom_resonance: 'Phantom Resonance',
-  crit_cascade: 'Crit Cascade',
-  toxic_synergy: 'Toxic Synergy',
-  shattered_bone: 'Shattered Bone',
-  soul_conduit: 'Soul Conduit',
-  bloodlust: 'Bloodlust',
-  arcane_amplifier: 'Arcane Amplifier',
-  temporal_echo: 'Temporal Echo',
-  necrotic_bloom: 'Necrotic Bloom',
 };
 
 export function PauseMenu({ getSummary, onResume, onRestart, onReturnToMenu }: Props) {
@@ -164,7 +134,7 @@ export function PauseMenu({ getSummary, onResume, onRestart, onReturnToMenu }: P
 
         {/* Build summary */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-5">
-          <StatCard label="Room" value={`${summary.room} (${ZONE_LABELS[summary.zone].split(' ').slice(-1)[0]})`} color="text-amber-300" />
+          <StatCard label="Room" value={summary.room} color="text-amber-300" />
           <StatCard label="Wave" value={summary.wave} color="text-amber-200" />
           <StatCard label="HP" value={`${summary.hp}/${summary.maxHp}`} color="text-rose-300" />
           <StatCard label="Souls" value={summary.souls} color="text-purple-300" />
@@ -172,19 +142,6 @@ export function PauseMenu({ getSummary, onResume, onRestart, onReturnToMenu }: P
           <StatCard label="Kills" value={summary.kills} color="text-zinc-200" />
           <StatCard label="Minions" value={`${summary.minions}/${summary.maxMinions}`} color="text-zinc-300" />
           <StatCard label="Wand" value={summary.wandType} color="text-zinc-300" />
-        </div>
-
-        {/* QOL: Extended combat stats */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-5">
-          <StatCard
-            label="Time"
-            value={`${Math.floor(summary.timeSurvived / 60)}:${Math.floor(summary.timeSurvived % 60).toString().padStart(2, '0')}`}
-            color="text-cyan-300"
-          />
-          <StatCard label="Elites" value={summary.elitesKilled} color="text-amber-300" />
-          <StatCard label="Max Combo" value={`${summary.maxCombo}x`} color="text-orange-300" />
-          <StatCard label="DMG Dealt" value={summary.damageDealt.toLocaleString()} color="text-green-300" />
-          <StatCard label="DMG Taken" value={summary.damageTaken.toLocaleString()} color="text-rose-300" />
         </div>
 
         {/* Skills */}
@@ -241,7 +198,7 @@ export function PauseMenu({ getSummary, onResume, onRestart, onReturnToMenu }: P
               onClick={onRestart}
               className="py-2.5 text-xs font-bold tracking-widest border-2 border-zinc-600 text-zinc-300 bg-zinc-900/60 rounded-sm hover:border-amber-500 hover:text-amber-300 transition-all"
             >
-              ↻ RESTART RUN <span className="text-[10px] ml-1 opacity-70">[R]</span>
+              ↻ RESTART RUN
             </button>
             <button
               onClick={onReturnToMenu}

@@ -79,23 +79,6 @@ const SKILL_NAMES: Record<string, string> = {
   soul_magnet_aura: 'Soul Magnet Aura',
   overcharge: 'Overcharge',
   twin_souls: 'Twin Souls',
-  // ===== NEW COMBO SKILLS =====
-  soul_resonance: 'Soul Resonance',
-  frostbite_curse: 'Frostbite Curse',
-  chain_reaction: 'Chain Reaction',
-  bone_storm_surge: 'Bone Storm Surge',
-  vampiric_hunger: 'Vampiric Hunger',
-  soul_battery_overload: 'Soul Battery Overload',
-  grave_echo: 'Grave Echo',
-  phantom_resonance: 'Phantom Resonance',
-  crit_cascade: 'Crit Cascade',
-  toxic_synergy: 'Toxic Synergy',
-  shattered_bone: 'Shattered Bone',
-  soul_conduit: 'Soul Conduit',
-  bloodlust: 'Bloodlust',
-  arcane_amplifier: 'Arcane Amplifier',
-  temporal_echo: 'Temporal Echo',
-  necrotic_bloom: 'Necrotic Bloom',
 };
 
 function AutoCooldownBar({
@@ -139,24 +122,8 @@ export function HUD({ snapshot: s }: Props) {
   const hpPct = (s.hp / s.maxHp) * 100;
   const lowHp = s.hp / s.maxHp < 0.3;
   const soulPct = (s.soulMeter / s.soulMeterMax) * 100;
-  // QOL: format time as MM:SS
-  const timeStr = `${Math.floor(s.timeSurvived / 60)}:${Math.floor(s.timeSurvived % 60).toString().padStart(2, '0')}`;
-  // QOL: total build path count (for progress bars)
-  const totalBuild = s.buildPaths.necromancy + s.buildPaths.wand + s.buildPaths.survival + s.buildPaths.generic;
   return (
     <div className="absolute inset-0 pointer-events-none font-mono text-white">
-      {/* ===== QOL: Low HP red pulse vignette ===== */}
-      {lowHp && (
-        <div
-          className="absolute inset-0 pointer-events-none animate-pulse"
-          style={{
-            background:
-              'radial-gradient(ellipse at center, transparent 40%, rgba(255,0,0,0.35) 100%)',
-            animationDuration: '0.8s',
-          }}
-        />
-      )}
-
       {/* ===== TOP LEFT: health, soul meter, souls ===== */}
       <div className="absolute top-3 left-3 flex flex-col gap-2">
         {/* Health */}
@@ -224,19 +191,6 @@ export function HUD({ snapshot: s }: Props) {
 
       {/* ===== TOP RIGHT: room info ===== */}
       <div className="absolute top-3 right-3 flex flex-col gap-1 items-end text-xs">
-        {/* QOL: Stage badge — prominent colored indicator */}
-        <div
-          className="px-3 py-0.5 rounded-sm text-[10px] font-black tracking-widest border-2"
-          style={{
-            color: s.stageColor,
-            borderColor: s.stageColor,
-            background: 'rgba(0,0,0,0.7)',
-            textShadow: `0 0 8px ${s.stageColor}`,
-            boxShadow: `0 0 10px ${s.stageColor}55, inset 0 0 8px ${s.stageColor}22`,
-          }}
-        >
-          {s.stageName}
-        </div>
         <div className="bg-zinc-900/80 border border-zinc-700 px-3 py-1 rounded-sm">
           <span className="text-zinc-500">Room </span>
           <span className="text-amber-300 font-bold">{s.room.roomNumber}</span>
@@ -249,8 +203,6 @@ export function HUD({ snapshot: s }: Props) {
               Wave {s.room.waveNumber}/{s.room.totalWaves}
             </span>
           )}
-          {/* QOL: Time survived */}
-          <span className="ml-3 text-cyan-300 font-bold">⏱ {timeStr}</span>
         </div>
         {!s.room.isBoss && (
           <div className="bg-zinc-900/80 border border-zinc-700 px-3 py-1 rounded-sm text-[10px]">
@@ -260,54 +212,11 @@ export function HUD({ snapshot: s }: Props) {
             </span>
           </div>
         )}
-        <div className="flex gap-1">
-          <div className="bg-zinc-900/80 border border-zinc-700 px-3 py-1 rounded-sm text-[10px]">
-            <span className="text-zinc-500">Kills: </span>
-            <span className="text-purple-200 font-bold">{s.kills}</span>
-          </div>
-          {s.elitesKilled > 0 && (
-            <div className="bg-zinc-900/80 border border-amber-700/60 px-3 py-1 rounded-sm text-[10px]">
-              <span className="text-zinc-500">Elites: </span>
-              <span className="text-amber-300 font-bold">{s.elitesKilled}</span>
-            </div>
-          )}
-          {/* QOL: Damage taken counter */}
-          <div className="bg-zinc-900/80 border border-rose-900/60 px-3 py-1 rounded-sm text-[10px]">
-            <span className="text-zinc-500">DMG Taken: </span>
-            <span className="text-rose-300 font-bold">{s.damageTaken}</span>
-          </div>
+        <div className="bg-zinc-900/80 border border-zinc-700 px-3 py-1 rounded-sm text-[10px]">
+          <span className="text-zinc-500">Kills: </span>
+          <span className="text-purple-200 font-bold">{s.kills}</span>
         </div>
-        {/* QOL: Build path progress bars */}
-        {totalBuild > 0 && (
-          <div className="bg-zinc-900/80 border border-zinc-700 px-2 py-1.5 rounded-sm text-[9px] flex flex-col gap-0.5 w-44">
-            <div className="text-zinc-500 uppercase tracking-wider mb-0.5">Build</div>
-            <BuildBar label="Necro" count={s.buildPaths.necromancy} color="#a0ffa0" total={totalBuild} />
-            <BuildBar label="Wand" count={s.buildPaths.wand} color="#a0c0ff" total={totalBuild} />
-            <BuildBar label="Surv" count={s.buildPaths.survival} color="#ffb060" total={totalBuild} />
-            {s.buildPaths.generic > 0 && (
-              <BuildBar label="Gen" count={s.buildPaths.generic} color="#c0a0ff" total={totalBuild} />
-            )}
-          </div>
-        )}
       </div>
-
-      {/* ===== QOL: Boss special telegraph warning (top center, below boss bar) ===== */}
-      {s.bossSpecialTelegraph && (
-        <div className="absolute top-20 left-1/2 -translate-x-1/2 flex flex-col items-center pointer-events-none">
-          <div
-            className="text-2xl font-black tracking-widest animate-pulse"
-            style={{
-              color: '#ff4040',
-              textShadow: '0 0 16px #ff0000, 0 0 4px #ffffff',
-            }}
-          >
-            ⚠ {s.bossSpecialTelegraph.name}
-          </div>
-          <div className="text-[10px] text-rose-300 uppercase tracking-widest">
-            in {s.bossSpecialTelegraph.timer.toFixed(1)}s
-          </div>
-        </div>
-      )}
 
       {/* ===== TOP CENTER: boss bar ===== */}
       {s.room.isBoss && s.room.bossHp !== undefined && s.room.bossMaxHp && (
@@ -478,35 +387,8 @@ export function HUD({ snapshot: s }: Props) {
 
       {/* ===== CONTROLS HINT ===== */}
       <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] text-zinc-600 font-mono">
-        WASD / Arrows — Move · Wand auto-fires (smart target) · All abilities auto-cast · ESC — Pause
+        WASD / Arrows — Move · Wand auto-fires · All abilities auto-cast · ESC — Pause
       </div>
-    </div>
-  );
-}
-
-// QOL: Build path progress bar component
-function BuildBar({
-  label,
-  count,
-  color,
-  total,
-}: {
-  label: string;
-  count: number;
-  color: string;
-  total: number;
-}) {
-  const pct = total > 0 ? (count / total) * 100 : 0;
-  return (
-    <div className="flex items-center gap-1">
-      <span className="w-8 text-zinc-500">{label}</span>
-      <div className="flex-1 h-1.5 bg-zinc-800 rounded-sm overflow-hidden">
-        <div
-          className="h-full transition-all"
-          style={{ width: `${pct}%`, background: color, boxShadow: `0 0 4px ${color}` }}
-        />
-      </div>
-      <span className="w-4 text-right" style={{ color }}>{count}</span>
     </div>
   );
 }
