@@ -1,6 +1,7 @@
 // ===== Game content: skills, upgrades, relics, enemy/boss stats =====
 import type {
   BossKind,
+  EliteAffix,
   Enemy,
   EnemyKind,
   Player,
@@ -16,9 +17,30 @@ export function createStartingPlayer(permanentBonuses: {
   minionPowerBonus: number;
   moveSpeedBonus: number;
   wandType: string;
+  startingSouls?: number;
+  iframeBonus?: number;
+  pickupRangeBonus?: number;
+  critChanceBonus?: number;
+  fireRateBonus?: number;
+  projectileSpeedBonus?: number;
+  extraLives?: number;
+  eliteSoulBonus?: number;
+  startingRelicChance?: number;
+  soulMeterReduction?: number;
+  // Stage 2 upgrades
+  stage2Damage?: number;
+  stage2Health?: number;
+  stage2EliteResist?: number;
+  stage2SoulMult?: number;
+  skin?: string;
 }): Player {
-  const baseWandDamage = 8 + permanentBonuses.wandPowerBonus * 3;
-  const baseMaxHp = 100 + permanentBonuses.healthBonus * 20;
+  // Stage 2 damage multiplier: +5% per level (applies to wand + minion damage)
+  const stage2DmgMult = 1 + (permanentBonuses.stage2Damage ?? 0) * 0.05;
+  const baseWandDamage = (8 + permanentBonuses.wandPowerBonus * 3) * stage2DmgMult;
+  // Stage 2 HP: +30 per level
+  const baseMaxHp = 100 + permanentBonuses.healthBonus * 20 + (permanentBonuses.stage2Health ?? 0) * 30;
+  // Stage 2 soul mult: +20% per level
+  const stage2SoulMult = 1 + (permanentBonuses.stage2SoulMult ?? 0) * 0.20;
   return {
     x: 0,
     y: 0,
@@ -31,9 +53,9 @@ export function createStartingPlayer(permanentBonuses: {
     radius: 14,
 
     wandLevel: 1,
-    fireRate: 2.2,
+    fireRate: 2.2 * (1 + (permanentBonuses.fireRateBonus ?? 0) * 0.05),
     damage: baseWandDamage,
-    projectileSpeed: 480,
+    projectileSpeed: 480 + (permanentBonuses.projectileSpeedBonus ?? 0) * 30,
     projectileCount: 1,
     pierce: 0,
     chainCount: 0,
@@ -48,16 +70,16 @@ export function createStartingPlayer(permanentBonuses: {
     splitterBoltLevel: 0,
     chainLightningLevel: 0,
     frostBoltLevel: 0,
-    critChance: 0,
+    critChance: (permanentBonuses.critChanceBonus ?? 0) * 0.03,
     critMult: 3,
     executeThreshold: 0,
     ricochetLevel: 0,
     minionHpMult: 1,
 
-    soulPickupRange: 80,
-    soulGainMult: 1 + permanentBonuses.soulGainBonus * 0.15,
+    soulPickupRange: 80 + (permanentBonuses.pickupRangeBonus ?? 0) * 12,
+    soulGainMult: (1 + permanentBonuses.soulGainBonus * 0.15) * stage2SoulMult,
 
-    minionDamage: 6 + permanentBonuses.minionPowerBonus * 2,
+    minionDamage: Math.round((6 + permanentBonuses.minionPowerBonus * 2) * stage2DmgMult),
     minionDuration: 12,
     raiseChance: 0,
     maxMinions: 0,
@@ -108,7 +130,7 @@ export function createStartingPlayer(permanentBonuses: {
     lichFormCooldown: 0,
 
     soulMeter: 0,
-    soulMeterMax: 50,
+    soulMeterMax: Math.max(20, 50 - (permanentBonuses.soulMeterReduction ?? 0) * 3),
 
     blackHoleLevel: 0,
     blackHoleTimer: 0,
@@ -121,12 +143,34 @@ export function createStartingPlayer(permanentBonuses: {
     earthquakeTimer: 0,
     blessedByGodLevel: 0,
 
+    comboCount: 0,
+    comboTimer: 0,
+    comboMax: 0,
+
+    soulResonanceActive: false,
+    frostbiteCurseActive: false,
+    chainReactionActive: false,
+    boneStormSurgeActive: false,
+    vampiricHungerActive: false,
+    soulBatteryOverloadActive: false,
+    graveEchoActive: false,
+    phantomResonanceActive: false,
+    critCascadeActive: false,
+    toxicSynergyActive: false,
+    shatteredBoneActive: false,
+    soulConduitActive: false,
+    bloodlustActive: false,
+    arcaneAmplifierActive: false,
+    temporalEchoActive: false,
+    necroticBloomActive: false,
+
     lastFireTime: 0,
     iframes: 0,
     skills: new Set<string>(),
     kills: 0,
     soulsCollected: 0,
     wandType: permanentBonuses.wandType,
+    skin: permanentBonuses.skin ?? 'default',
   };
 }
 
@@ -780,20 +824,20 @@ export const UPGRADES: Upgrade[] = [
   {
     id: 'execute',
     name: 'Execute',
-    description: 'Instantly kill enemies below 10% HP (+5% per stack).',
+    description: 'Instantly kill non-boss enemies below 25% HP.',
     path: 'wand',
     rarity: 'epic',
     icon: '⚔',
-    requires: (p) => p.executeThreshold < 0.3,
+    requires: (p) => !p.skills.has('execute'),
     apply: (p) => {
-      p.executeThreshold += 0.1;
+      p.executeThreshold = 0.25;
       p.skills.add('execute');
     },
   },
   {
     id: 'ricochet',
     name: 'Ricochet',
-    description: 'Wand shots bounce off walls (+1 bounce per level).',
+    description: 'Wand shots bounce off walls (+1 bounce per level). Without this, shots disappear on wall contact.',
     path: 'wand',
     rarity: 'rare',
     icon: '↺',
@@ -823,14 +867,14 @@ export const UPGRADES: Upgrade[] = [
   {
     id: 'plague_bats',
     name: 'Plague Bats',
-    description: 'Summon 3 flying bats that swarm enemies.',
+    description: 'Summon 5 flying bats that swarm enemies (persistent).',
     path: 'necromancy',
     rarity: 'epic',
     icon: '🦇',
-    requires: (p) => p.plagueBatsLevel < 3,
+    requires: (p) => !p.skills.has('plague_bats') && p.maxMinions >= 4,
     apply: (p) => {
-      p.plagueBatsLevel += 1;
-      p.maxMinions += 3;
+      p.plagueBatsLevel = 1;
+      p.maxMinions += 5;
       p.skills.add('plague_bats');
     },
   },
@@ -919,52 +963,52 @@ export const UPGRADES: Upgrade[] = [
   {
     id: 'black_hole',
     name: 'Black Hole',
-    description: 'AUTO: Every 15s, open a singularity that pulls and shreds enemies.',
+    description: 'AUTO: Every 15s, open a massive singularity that pulls and shreds enemies.',
     path: 'generic',
     rarity: 'epic',
     icon: '⚫',
-    requires: (p) => p.blackHoleLevel < 3,
+    requires: (p) => !p.skills.has('black_hole'),
     apply: (p) => {
-      p.blackHoleLevel += 1;
+      p.blackHoleLevel = 1;
       p.skills.add('black_hole');
     },
   },
   {
     id: 'meteor_strike',
     name: 'Meteor Strike',
-    description: 'AUTO: Every 5s, a meteor crashes on a random enemy.',
+    description: 'AUTO: Every 5s, a devastating meteor crashes on the strongest enemy.',
     path: 'generic',
     rarity: 'epic',
     icon: '☄',
-    requires: (p) => p.meteorLevel < 3,
+    requires: (p) => !p.skills.has('meteor_strike'),
     apply: (p) => {
-      p.meteorLevel += 1;
+      p.meteorLevel = 1;
       p.skills.add('meteor_strike');
     },
   },
   {
     id: 'time_warp',
     name: 'Time Warp',
-    description: 'AUTO: Every 18s, slow ALL enemies for 4s.',
+    description: 'AUTO: Every 18s, slow ALL enemies to 30% speed for 5s.',
     path: 'generic',
     rarity: 'epic',
     icon: '⏱',
-    requires: (p) => p.timeWarpLevel < 3,
+    requires: (p) => !p.skills.has('time_warp'),
     apply: (p) => {
-      p.timeWarpLevel += 1;
+      p.timeWarpLevel = 1;
       p.skills.add('time_warp');
     },
   },
   {
     id: 'earthquake',
     name: 'Earthquake',
-    description: 'AUTO: Every 12s, shockwave damages and knocks back all enemies.',
+    description: 'AUTO: Every 12s, a massive shockwave damages and knocks back ALL enemies.',
     path: 'generic',
     rarity: 'epic',
     icon: '🌐',
-    requires: (p) => p.earthquakeLevel < 3,
+    requires: (p) => !p.skills.has('earthquake'),
     apply: (p) => {
-      p.earthquakeLevel += 1;
+      p.earthquakeLevel = 1;
       p.skills.add('earthquake');
     },
   },
@@ -973,13 +1017,13 @@ export const UPGRADES: Upgrade[] = [
   {
     id: 'blessed_by_god',
     name: 'I AM BLESSED BY GOD',
-    description: 'DIVINE: Enemies have a chance to drop golden chests containing RARE+ skills!',
+    description: 'DIVINE: 1% chance for non-boss enemies to drop golden chests containing RARE+ skills!',
     path: 'generic',
     rarity: 'epic',
     icon: '✨',
-    requires: (p) => p.blessedByGodLevel < 3,
+    requires: (p) => !p.skills.has('blessed_by_god'),
     apply: (p) => {
-      p.blessedByGodLevel += 1;
+      p.blessedByGodLevel = 1; // 1% chest drop rate
       p.skills.add('blessed_by_god');
     },
   },
@@ -1057,7 +1101,334 @@ export const UPGRADES: Upgrade[] = [
       p.skills.add('twin_souls');
     },
   },
+
+  // ===== NEW COMBO SKILLS (epic, one-time-only) — these powers interact with other skills =====
+  {
+    id: 'soul_resonance',
+    name: 'Soul Resonance',
+    description: 'COMBO: If you have 3+ minions, all minions deal +50% damage.',
+    path: 'necromancy',
+    rarity: 'epic',
+    icon: '🎵',
+    requires: (p) =>
+      !p.soulResonanceActive && p.maxMinions >= 4,
+    apply: (p) => {
+      p.soulResonanceActive = true;
+      p.minionDamage *= 1.5;
+      p.skills.add('soul_resonance');
+    },
+  },
+  {
+    id: 'frostbite_curse',
+    name: 'Frostbite Curse',
+    description: 'COMBO: Frost Bolt slows also mark enemies for +50% damage. Requires Frost Bolt.',
+    path: 'wand',
+    rarity: 'epic',
+    icon: '❄',
+    requires: (p) => !p.frostbiteCurseActive && p.frostBoltLevel > 0,
+    apply: (p) => {
+      p.frostbiteCurseActive = true;
+      p.skills.add('frostbite_curse');
+    },
+  },
+  {
+    id: 'chain_reaction',
+    name: 'Chain Reaction',
+    description: 'COMBO: Chain Lightning bounces explode for AoE damage. Requires Chain Lightning.',
+    path: 'wand',
+    rarity: 'epic',
+    icon: '⚡',
+    requires: (p) => !p.chainReactionActive && p.chainLightningLevel > 0,
+    apply: (p) => {
+      p.chainReactionActive = true;
+      p.skills.add('chain_reaction');
+    },
+  },
+  {
+    id: 'bone_storm_surge',
+    name: 'Bone Storm Surge',
+    description: 'COMBO: Bone Storm orbit count doubles while Aura of Decay is active.',
+    path: 'survival',
+    rarity: 'epic',
+    icon: '🌀',
+    requires: (p) =>
+      !p.boneStormSurgeActive &&
+      p.boneStormLevel > 0 &&
+      p.auraOfDecayLevel > 0,
+    apply: (p) => {
+      p.boneStormSurgeActive = true;
+      p.skills.add('bone_storm_surge');
+    },
+  },
+  {
+    id: 'vampiric_hunger',
+    name: 'Vampiric Hunger',
+    description: 'COMBO: Vampiric Aura lifesteal also heals your minions. Requires Vampiric Aura.',
+    path: 'necromancy',
+    rarity: 'epic',
+    icon: '🩸',
+    requires: (p) => !p.vampiricHungerActive && p.vampiricAuraLevel > 0,
+    apply: (p) => {
+      p.vampiricHungerActive = true;
+      p.skills.add('vampiric_hunger');
+    },
+  },
+  {
+    id: 'soul_battery_overload',
+    name: 'Soul Battery Overload',
+    description: 'COMBO: Soul Nova also triggers a meteor storm on all enemies.',
+    path: 'generic',
+    rarity: 'epic',
+    icon: '☄',
+    requires: (p) => !p.soulBatteryOverloadActive && p.skills.has('soul_battery'),
+    apply: (p) => {
+      p.soulBatteryOverloadActive = true;
+      p.skills.add('soul_battery_overload');
+    },
+  },
+  {
+    id: 'grave_echo',
+    name: 'Grave Echo',
+    description: 'COMBO: When a minion dies, 25% chance to cast a mini Grave Call. Requires any minion skill.',
+    path: 'necromancy',
+    rarity: 'epic',
+    icon: '🔊',
+    requires: (p) =>
+      !p.graveEchoActive && p.maxMinions >= 4,
+    apply: (p) => {
+      p.graveEchoActive = true;
+      p.skills.add('grave_echo');
+    },
+  },
+  {
+    id: 'phantom_resonance',
+    name: 'Phantom Resonance',
+    description: 'COMBO: Spirit Walk phases also grant 1s of invulnerability. Requires Spirit Walk.',
+    path: 'survival',
+    rarity: 'epic',
+    icon: '👻',
+    requires: (p) => !p.phantomResonanceActive && p.spiritWalkLevel > 0,
+    apply: (p) => {
+      p.phantomResonanceActive = true;
+      p.skills.add('phantom_resonance');
+    },
+  },
+  {
+    id: 'crit_cascade',
+    name: 'Crit Cascade',
+    description: 'COMBO: Critical hits also fire a chain lightning bolt. Requires Critical Strike + Chain Lightning.',
+    path: 'wand',
+    rarity: 'epic',
+    icon: '✸',
+    requires: (p) =>
+      !p.critCascadeActive &&
+      p.critChance > 0 &&
+      p.chainLightningLevel > 0,
+    apply: (p) => {
+      p.critCascadeActive = true;
+      p.skills.add('crit_cascade');
+    },
+  },
+  {
+    id: 'toxic_synergy',
+    name: 'Toxic Synergy',
+    description: 'COMBO: Marked enemies take 2x damage from DoT effects. Requires Mark of Death + Soul Burn.',
+    path: 'necromancy',
+    rarity: 'epic',
+    icon: '☠',
+    requires: (p) =>
+      !p.toxicSynergyActive &&
+      p.markOfDeathLevel > 0 &&
+      p.dotChance > 0,
+    apply: (p) => {
+      p.toxicSynergyActive = true;
+      p.skills.add('toxic_synergy');
+    },
+  },
+  {
+    id: 'shattered_bone',
+    name: 'Shattered Bone',
+    description: 'COMBO: Bone Walls shatter into damaging shards when they expire. Requires Bone Wall.',
+    path: 'survival',
+    rarity: 'epic',
+    icon: '💀',
+    requires: (p) => !p.shatteredBoneActive && p.boneWallLevel > 0,
+    apply: (p) => {
+      p.shatteredBoneActive = true;
+      p.skills.add('shattered_bone');
+    },
+  },
+  {
+    id: 'soul_conduit',
+    name: 'Soul Conduit',
+    description: 'COMBO: Every 5th soul pickup triggers a mini Soul Nova (small AoE damage).',
+    path: 'generic',
+    rarity: 'epic',
+    icon: '🔮',
+    requires: (p) => !p.soulConduitActive,
+    apply: (p) => {
+      p.soulConduitActive = true;
+      p.skills.add('soul_conduit');
+    },
+  },
+  {
+    id: 'bloodlust',
+    name: 'Bloodlust',
+    description: 'COMBO: Hitting combo milestones (10/25/50/100) enrages minions for 5s (+80% dmg, +30% speed).',
+    path: 'necromancy',
+    rarity: 'epic',
+    icon: '😡',
+    requires: (p) => !p.bloodlustActive && p.maxMinions >= 4,
+    apply: (p) => {
+      p.bloodlustActive = true;
+      p.skills.add('bloodlust');
+    },
+  },
+  {
+    id: 'arcane_amplifier',
+    name: 'Arcane Amplifier',
+    description: 'COMBO: Wand fires 1 extra projectile when Soul Meter is above 75% full.',
+    path: 'wand',
+    rarity: 'epic',
+    icon: '🔆',
+    requires: (p) => !p.arcaneAmplifierActive && p.skills.has('soul_battery'),
+    apply: (p) => {
+      p.arcaneAmplifierActive = true;
+      p.skills.add('arcane_amplifier');
+    },
+  },
+  {
+    id: 'temporal_echo',
+    name: 'Temporal Echo',
+    description: 'COMBO: Time Warp also slows enemy projectiles by 50%. Requires Time Warp.',
+    path: 'generic',
+    rarity: 'epic',
+    icon: '⏳',
+    requires: (p) => !p.temporalEchoActive && p.timeWarpLevel > 0,
+    apply: (p) => {
+      p.temporalEchoActive = true;
+      p.skills.add('temporal_echo');
+    },
+  },
+  {
+    id: 'necrotic_bloom',
+    name: 'Necrotic Bloom',
+    description: 'COMBO: If Necrotic Explosion kills an enemy, it chains to another nearby foe. Requires Necrotic Explosion.',
+    path: 'necromancy',
+    rarity: 'epic',
+    icon: '🌸',
+    requires: (p) => !p.necroticBloomActive && p.necroticExplosionLevel > 0,
+    apply: (p) => {
+      p.necroticBloomActive = true;
+      p.skills.add('necrotic_bloom');
+    },
+  },
 ];
+
+// ---------- Skins ----------
+import type { SkinDef } from './types';
+
+export const SKINS: SkinDef[] = [
+  {
+    id: 'default',
+    name: 'Grimwick the Failed',
+    description: 'The original necromancer. Purple robe, glowing violet eyes.',
+    boneColor: '#e8e0d0',
+    robeColor: '#3a1858',
+    robeTrim: '#5a2880',
+    eyeColor: '#b58cff',
+    wandTipColor: '#b58cff',
+    unlockHint: 'Default skin — always available',
+  },
+  {
+    id: 'golden_lich',
+    name: 'Golden Lich',
+    description: 'Gilded bones and royal regalia. Earned by clearing The Crypt.',
+    boneColor: '#ffe8a0',
+    robeColor: '#604010',
+    robeTrim: '#ffd040',
+    eyeColor: '#ffd040',
+    wandTipColor: '#ffd040',
+    auraColor: '#ffd040',
+    unlockHint: 'Clear The Crypt (defeat Bone Dragon)',
+  },
+  {
+    id: 'void_walker',
+    name: 'Void Walker',
+    description: 'Twisted by the void. Glowing purple aura, dark bones.',
+    boneColor: '#a0a0c0',
+    robeColor: '#1a0030',
+    robeTrim: '#a040ff',
+    eyeColor: '#ff40ff',
+    wandTipColor: '#a040ff',
+    auraColor: '#a040ff',
+    unlockHint: 'Clear The Void Depths (defeat Void Leviathan)',
+  },
+  {
+    id: 'bone_king',
+    name: 'Bone King',
+    description: 'Crowned ruler of the dead. White bones, regal crimson.',
+    boneColor: '#ffffff',
+    robeColor: '#600818',
+    robeTrim: '#c04060',
+    eyeColor: '#ff4060',
+    wandTipColor: '#ff4060',
+    auraColor: '#ff4060',
+    unlockHint: 'Clear The Abyssal Throne (defeat Lich King)',
+  },
+  {
+    id: 'frost_mage',
+    name: 'Frost Mage',
+    description: 'Icy necromancer with crystalline bones. Cyan glow.',
+    boneColor: '#c0e0ff',
+    robeColor: '#103040',
+    robeTrim: '#40c0ff',
+    eyeColor: '#80e0ff',
+    wandTipColor: '#40c0ff',
+    auraColor: '#40c0ff',
+    unlockHint: 'Buy from Crypt Hub (500 soul shards)',
+  },
+  {
+    id: 'shadow_reaper',
+    name: 'Shadow Reaper',
+    description: 'Pure darkness given form. Black bones, sickle-green eyes.',
+    boneColor: '#202028',
+    robeColor: '#000000',
+    robeTrim: '#208040',
+    eyeColor: '#80ff40',
+    wandTipColor: '#80ff40',
+    auraColor: '#208040',
+    unlockHint: 'Buy from Crypt Hub (1000 soul shards)',
+  },
+  {
+    id: 'blood_mage',
+    name: 'Blood Mage',
+    description: 'Vampiric necromancer. Crimson bones, blood-red aura.',
+    boneColor: '#c08080',
+    robeColor: '#400810',
+    robeTrim: '#c00020',
+    eyeColor: '#ff2040',
+    wandTipColor: '#ff2040',
+    auraColor: '#ff2040',
+    unlockHint: 'Buy from Crypt Hub (1500 soul shards)',
+  },
+  {
+    id: 'cosmic_horror',
+    name: 'Cosmic Horror',
+    description: 'Eldritch abomination. Star-filled bones, rainbow aura.',
+    boneColor: '#402060',
+    robeColor: '#100020',
+    robeTrim: '#ff80ff',
+    eyeColor: '#ffff80',
+    wandTipColor: '#ff80ff',
+    auraColor: '#ff80ff',
+    unlockHint: 'Buy from Crypt Hub (3000 soul shards) — Ultimate skin',
+  },
+];
+
+export function getSkin(id: string): SkinDef {
+  return SKINS.find((s) => s.id === id) ?? SKINS[0];
+}
 
 // ---------- Relics ----------
 export const RELICS: Relic[] = [
@@ -1201,36 +1572,77 @@ export const RELICS: Relic[] = [
       p.skills.add('undying_heart');
     },
   },
+  // ===== NEW RELICS =====
+  {
+    id: 'soul_battery_relic',
+    name: 'Soul Battery',
+    description: 'Soul meter fills 50% faster. More frequent Soul Novas.',
+    rarity: 'rare',
+    icon: '🔋',
+    apply: (p) => {
+      p.soulMeterMax = Math.max(10, Math.floor(p.soulMeterMax * 0.66));
+    },
+  },
+  {
+    id: 'wand_master',
+    name: 'Wand Master',
+    description: '+25% fire rate, +15% projectile speed. Pure wand power.',
+    rarity: 'rare',
+    icon: '🎯',
+    apply: (p) => {
+      p.fireRate *= 1.25;
+      p.projectileSpeed *= 1.15;
+      p.wandLevel += 1;
+    },
+  },
+  {
+    id: 'twin_wands',
+    name: 'Twin Wands',
+    description: '+1 projectile. Fires in a wider spread.',
+    rarity: 'epic',
+    icon: '🔫',
+    apply: (p) => {
+      p.projectileCount += 1;
+      p.projectileSpread = Math.max(p.projectileSpread, 0.18);
+      p.wandLevel += 1;
+    },
+  },
+  {
+    id: 'bone_armor_relic',
+    name: 'Bone Armor',
+    description: '+60 max HP, +3 iron bones (flat damage reduction).',
+    rarity: 'rare',
+    icon: '🛡',
+    apply: (p) => {
+      p.maxHp += 60;
+      p.hp += 60;
+      p.ironBonesLevel += 3;
+    },
+  },
+  {
+    id: 'soul_magnet_relic',
+    name: 'Soul Magnet',
+    description: 'Triple soul pickup range. Never miss a soul again.',
+    rarity: 'common',
+    icon: '🧲',
+    apply: (p) => {
+      p.soulPickupRange *= 3;
+      p.soulGainMult *= 1.1;
+    },
+  },
+  {
+    id: 'berserker_crown',
+    name: 'Berserker Crown',
+    description: '+40% damage, -30 max HP. High risk, high reward.',
+    rarity: 'epic',
+    icon: '👑',
+    apply: (p) => {
+      p.damage *= 1.4;
+      p.maxHp = Math.max(20, p.maxHp - 30);
+      p.hp = Math.min(p.hp, p.maxHp);
+    },
+  },
 ];
-
-// ---------- Skins ----------
-export interface SkinDef {
-  id: string;
-  name: string;
-  description: string;
-  boneColor: string;
-  robeColor: string;
-  robeTrim: string;
-  eyeColor: string;
-  wandTipColor: string;
-  unlockHint: string;
-  auraColor?: string;
-}
-
-export const SKINS: SkinDef[] = [
-  { id: 'default', name: 'Grimwick the Failed', description: 'The original necromancer. Purple robe, glowing violet eyes.', boneColor: '#e8e0d0', robeColor: '#3a1858', robeTrim: '#5a2880', eyeColor: '#b58cff', wandTipColor: '#b58cff', unlockHint: 'Default skin — always available' },
-  { id: 'golden_lich', name: 'Golden Lich', description: 'Gilded bones and royal regalia.', boneColor: '#ffe8a0', robeColor: '#604010', robeTrim: '#ffd040', eyeColor: '#ffd040', wandTipColor: '#ffd040', auraColor: '#ffd040', unlockHint: 'Clear The Crypt (defeat Bone Dragon)' },
-  { id: 'void_walker', name: 'Void Walker', description: 'Twisted by the void. Glowing purple aura.', boneColor: '#a0a0c0', robeColor: '#1a0030', robeTrim: '#a040ff', eyeColor: '#ff40ff', wandTipColor: '#a040ff', auraColor: '#a040ff', unlockHint: 'Clear The Void Depths (defeat Void Leviathan)' },
-  { id: 'bone_king', name: 'Bone King', description: 'Crowned ruler of the dead. White bones, regal crimson.', boneColor: '#ffffff', robeColor: '#600818', robeTrim: '#c04060', eyeColor: '#ff4060', wandTipColor: '#ff4060', auraColor: '#ff4060', unlockHint: 'Clear The Abyssal Throne (defeat Lich King)' },
-  { id: 'frost_mage', name: 'Frost Mage', description: 'Icy necromancer with crystalline bones.', boneColor: '#c0e0ff', robeColor: '#103040', robeTrim: '#40c0ff', eyeColor: '#80e0ff', wandTipColor: '#40c0ff', auraColor: '#40c0ff', unlockHint: 'Buy from Crypt Hub (500 soul shards)' },
-  { id: 'shadow_reaper', name: 'Shadow Reaper', description: 'Pure darkness given form. Sickly-green eyes.', boneColor: '#202028', robeColor: '#000000', robeTrim: '#208040', eyeColor: '#80ff40', wandTipColor: '#80ff40', auraColor: '#208040', unlockHint: 'Buy from Crypt Hub (1000 soul shards)' },
-  { id: 'blood_mage', name: 'Blood Mage', description: 'Vampiric necromancer. Crimson bones, blood-red aura.', boneColor: '#c08080', robeColor: '#400810', robeTrim: '#c00020', eyeColor: '#ff2040', wandTipColor: '#ff2040', auraColor: '#ff2040', unlockHint: 'Buy from Crypt Hub (1500 soul shards)' },
-  { id: 'cosmic_horror', name: 'Cosmic Horror', description: 'Eldritch abomination. Star-filled bones, rainbow aura.', boneColor: '#402060', robeColor: '#100020', robeTrim: '#ff80ff', eyeColor: '#ffff80', wandTipColor: '#ff80ff', auraColor: '#ff80ff', unlockHint: 'Buy from Crypt Hub (3000 soul shards) — Ultimate skin' },
-];
-
-export function getSkin(id: string): SkinDef {
-  return SKINS.find((s) => s.id === id) ?? SKINS[0];
-}
 
 // ---------- Enemy stats ----------
 export interface EnemyTemplate {
@@ -1344,9 +1756,207 @@ export const ENEMY_TEMPLATES: Record<EnemyKind, EnemyTemplate> = {
     color: '#d0c0a0',
     soulValue: 5,
   },
+  // ===== VOID STAGE ENEMIES (Stage 2) =====
+  void_horror: {
+    hp: 70,
+    damage: 18,
+    speed: 70,
+    radius: 16,
+    attackInterval: 1.5,
+    color: '#a040ff',
+    soulValue: 8,
+  },
+  void_wraith: {
+    hp: 50,
+    damage: 20,
+    speed: 130,
+    radius: 14,
+    attackInterval: 1.2,
+    color: '#6080ff',
+    soulValue: 7,
+  },
+  void_leviathan: {
+    hp: 200,
+    damage: 26,
+    speed: 60,
+    radius: 24,
+    attackInterval: 1.8,
+    color: '#40c0a0',
+    soulValue: 14,
+  },
+  void_reaper: {
+    hp: 90,
+    damage: 24,
+    speed: 150,
+    radius: 15,
+    attackInterval: 0.9,
+    color: '#ff40c0',
+    soulValue: 10,
+  },
 };
 
-// ---------- Boss stats ----------
+// ===== ELITE AFFIX SYSTEM =====
+export interface EliteAffixData {
+  id: EliteAffix;
+  name: string;
+  color: string; // aura color
+  description: string;
+  // stat multipliers
+  hpMult: number;
+  damageMult: number;
+  speedMult: number;
+  sizeMult: number;
+  soulValueMult: number;
+  // chance to spawn weight (higher = more common)
+  weight: number;
+}
+
+export const ELITE_AFFIXES: Record<EliteAffix, EliteAffixData> = {
+  swift: {
+    id: 'swift',
+    name: 'Swift',
+    color: '#7afcff',
+    description: '+60% movement & attack speed',
+    hpMult: 1.0,
+    damageMult: 1.0,
+    speedMult: 1.6,
+    sizeMult: 1.0,
+    soulValueMult: 2.0,
+    weight: 10,
+  },
+  colossal: {
+    id: 'colossal',
+    name: 'Colossal',
+    color: '#ff9a3c',
+    description: '+200% HP, +50% size, -30% speed',
+    hpMult: 3.0,
+    damageMult: 1.3,
+    speedMult: 0.7,
+    sizeMult: 1.5,
+    soulValueMult: 2.5,
+    weight: 8,
+  },
+  volatile: {
+    id: 'volatile',
+    name: 'Volatile',
+    color: '#ff5252',
+    description: 'Explodes violently on death',
+    hpMult: 1.2,
+    damageMult: 1.0,
+    speedMult: 1.0,
+    sizeMult: 1.1,
+    soulValueMult: 2.0,
+    weight: 9,
+  },
+  vampiric: {
+    id: 'vampiric',
+    name: 'Vampiric',
+    color: '#ff4d8d',
+    description: 'Heals on hit, drops 2x souls',
+    hpMult: 1.3,
+    damageMult: 1.0,
+    speedMult: 1.0,
+    sizeMult: 1.0,
+    soulValueMult: 2.0,
+    weight: 7,
+  },
+  splitter: {
+    id: 'splitter',
+    name: 'Splitter',
+    color: '#9dffb0',
+    description: 'Splits into 2 smaller versions on death',
+    hpMult: 1.0,
+    damageMult: 0.8,
+    speedMult: 1.0,
+    sizeMult: 1.15,
+    soulValueMult: 1.8,
+    weight: 7,
+  },
+  resurrective: {
+    id: 'resurrective',
+    name: 'Resurrective',
+    color: '#c08aff',
+    description: 'Revives once at 50% HP',
+    hpMult: 1.4,
+    damageMult: 1.1,
+    speedMult: 1.0,
+    sizeMult: 1.1,
+    soulValueMult: 2.2,
+    weight: 5,
+  },
+  ethereal: {
+    id: 'ethereal',
+    name: 'Ethereal',
+    color: '#b8e0ff',
+    description: '30% chance to phase through attacks',
+    hpMult: 1.0,
+    damageMult: 1.0,
+    speedMult: 1.1,
+    sizeMult: 1.0,
+    soulValueMult: 2.0,
+    weight: 6,
+  },
+  vengeful: {
+    id: 'vengeful',
+    name: 'Vengeful',
+    color: '#ffd34d',
+    description: 'Enrages at low HP, +50% speed & +30% damage',
+    hpMult: 1.2,
+    damageMult: 1.0,
+    speedMult: 1.0,
+    sizeMult: 1.05,
+    soulValueMult: 2.0,
+    weight: 7,
+  },
+  toxic: {
+    id: 'toxic',
+    name: 'Toxic',
+    color: '#7cff5a',
+    description: 'Leaves a poison trail; applies DoT on hit',
+    hpMult: 1.1,
+    damageMult: 1.0,
+    speedMult: 0.95,
+    sizeMult: 1.05,
+    soulValueMult: 2.0,
+    weight: 6,
+  },
+  shielded: {
+    id: 'shielded',
+    name: 'Shielded',
+    color: '#7ad3ff',
+    description: 'Has a regenerating damage shield',
+    hpMult: 1.0,
+    damageMult: 1.0,
+    speedMult: 0.9,
+    sizeMult: 1.1,
+    soulValueMult: 2.2,
+    weight: 5,
+  },
+};
+
+// Roll N random affixes for an elite (no duplicates)
+export function rollEliteAffixes(count: number): EliteAffix[] {
+  const entries = Object.values(ELITE_AFFIXES);
+  const out: EliteAffix[] = [];
+  const pool = [...entries];
+  for (let i = 0; i < count && pool.length > 0; i++) {
+    const totalWeight = pool.reduce((s, e) => s + e.weight, 0);
+    let r = Math.random() * totalWeight;
+    let idx = 0;
+    for (let j = 0; j < pool.length; j++) {
+      r -= pool[j].weight;
+      if (r <= 0) {
+        idx = j;
+        break;
+      }
+    }
+    out.push(pool[idx].id);
+    pool.splice(idx, 1);
+  }
+  return out;
+}
+
+// ===== BOSS TEMPLATES =====
 export interface BossTemplate {
   name: string;
   hp: number;
@@ -1394,25 +2004,86 @@ export const BOSS_TEMPLATES: Record<BossKind, BossTemplate> = {
     color: '#e8e0d0',
     soulValue: 200,
   },
-  wraith_queen: { name: 'The Wraith Queen', hp: 1100, damage: 30, speed: 110, radius: 28, color: '#c4a0ff', soulValue: 120 },
-  bone_colossus: { name: 'The Bone Colossus', hp: 2400, damage: 40, speed: 45, radius: 48, color: '#d8c8a8', soulValue: 220 },
-  void_reaper_king: { name: 'The Void Reaper King', hp: 2800, damage: 48, speed: 130, radius: 32, color: '#a040ff', soulValue: 280 },
-  void_leviathan: { name: 'The Void Leviathan', hp: 4200, damage: 52, speed: 60, radius: 52, color: '#40c0a0', soulValue: 360 },
-  lich_king: { name: 'The Lich King', hp: 6500, damage: 60, speed: 80, radius: 40, color: '#c0c0ff', soulValue: 500 },
+  wraith_queen: {
+    name: 'The Wraith Queen',
+    hp: 1100,
+    damage: 30,
+    speed: 110,
+    radius: 28,
+    color: '#c4a0ff',
+    soulValue: 120,
+  },
+  bone_colossus: {
+    name: 'The Bone Colossus',
+    hp: 2400,
+    damage: 40,
+    speed: 45,
+    radius: 48,
+    color: '#d8c8a8',
+    soulValue: 220,
+  },
+  // ===== VOID & ABYSS BOSSES =====
+  void_reaper_king: {
+    name: 'The Void Reaper King',
+    hp: 2800,
+    damage: 48,
+    speed: 130,
+    radius: 32,
+    color: '#a040ff',
+    soulValue: 280,
+  },
+  void_leviathan: {
+    name: 'The Void Leviathan',
+    hp: 4200,
+    damage: 52,
+    speed: 60,
+    radius: 52,
+    color: '#40c0a0',
+    soulValue: 360,
+  },
+  lich_king: {
+    name: 'The Lich King',
+    hp: 6500,
+    damage: 60,
+    speed: 80,
+    radius: 40,
+    color: '#c0c0ff',
+    soulValue: 500,
+  },
 };
 
-// Boss spawn schedule
+// Boss spawn schedule (which room # spawns which boss)
+// Stage 1 (Crypt): rooms 1-16 — original bosses
+// Stage 2 (Void): rooms 17-24 — void bosses, all enemies are elites
+// Stage 3 (Abyss): rooms 25+ — boss rush, limited vision, lich_king finale
 export const BOSS_ROOM_SCHEDULE: { room: number; boss: BossKind }[] = [
+  // Stage 1: Crypt
   { room: 4, boss: 'bell_knight' },
   { room: 6, boss: 'wraith_queen' },
   { room: 8, boss: 'twins' },
   { room: 12, boss: 'sun_priest' },
   { room: 14, boss: 'bone_colossus' },
   { room: 16, boss: 'bone_dragon' },
+  // Stage 2: Void
   { room: 18, boss: 'void_reaper_king' },
   { room: 22, boss: 'void_leviathan' },
+  // Stage 3: Abyss
   { room: 26, boss: 'lich_king' },
 ];
+
+// Helper: get the current stage based on room number
+export function getStage(room: number): 'crypt' | 'void' | 'abyss' {
+  if (room >= 25) return 'abyss';
+  if (room >= 17) return 'void';
+  return 'crypt';
+}
+
+// Helper: stage names for UI
+export const STAGE_NAMES: Record<'crypt' | 'void' | 'abyss', { name: string; subtitle: string; color: string }> = {
+  crypt: { name: 'THE CRYPT', subtitle: 'Stage 1', color: '#a08060' },
+  void: { name: 'THE VOID DEPTHS', subtitle: 'Stage 2', color: '#a040ff' },
+  abyss: { name: 'THE ABYSSAL THRONE', subtitle: 'Stage 3', color: '#ff4040' },
+};
 
 // ---------- Wave composition ----------
 // Returns enemy kinds to spawn for a given room/wave.
@@ -1423,15 +2094,30 @@ export function generateWave(
   blackCandle: boolean
 ): EnemyKind[] {
   const out: EnemyKind[] = [];
-  const base = 4 + room * 1.5 + wave * 1.5;
+  // Stage 2/3 have significantly more enemies per wave
+  const stageMult = room >= 25 ? 1.6 : room >= 17 ? 1.35 : 1;
+  const base = (4 + room * 1.5 + wave * 1.5) * stageMult;
   let count = Math.floor(base);
   if (blackCandle) count = Math.floor(count * 1.3);
 
   // unlock enemy variety by room
-  const pool: EnemyKind[] = ['knight', 'robber', 'slime'];
+  let pool: EnemyKind[] = ['knight', 'robber', 'slime'];
   if (room >= 2) pool.push('priest', 'ghost', 'cultist');
   if (room >= 4) pool.push('mage', 'gargoyle', 'banshee');
   if (room >= 6) pool.push('paladin', 'bonebeast');
+
+  // Stage 2 (Void): replace pool with void enemies
+  if (room >= 17 && room < 25) {
+    pool = ['void_horror', 'void_wraith', 'void_reaper'];
+    if (room >= 19) pool.push('void_leviathan');
+    // occasionally mix in stronger crypt enemies for variety
+    if (Math.random() < 0.3) pool.push('bonebeast', 'banshee');
+  }
+
+  // Stage 3 (Abyss): mixed hardest enemies + guaranteed elites
+  if (room >= 25) {
+    pool = ['void_horror', 'void_wraith', 'void_reaper', 'void_leviathan', 'bonebeast', 'paladin', 'banshee'];
+  }
 
   for (let i = 0; i < count; i++) {
     out.push(pool[Math.floor(Math.random() * pool.length)]);
@@ -1439,14 +2125,23 @@ export function generateWave(
 
   // last wave gets a tougher mix
   if (wave === totalWaves - 1 && room >= 3) {
-    out.push('gargoyle', 'paladin');
-    if (room >= 5) out.push('bonebeast', 'banshee');
+    if (room < 17) {
+      out.push('gargoyle', 'paladin');
+      if (room >= 5) out.push('bonebeast', 'banshee');
+    } else {
+      // Void/Abyss last wave: heavy hitters
+      out.push('void_leviathan', 'void_reaper');
+      if (room >= 20) out.push('void_leviathan');
+    }
   }
   return out;
 }
 
 // Returns total waves for a room
 export function wavesPerRoom(room: number): number {
+  // Stage 2/3 have more waves per room
+  if (room >= 25) return Math.min(7, 4 + Math.floor((room - 25) / 3));
+  if (room >= 17) return Math.min(6, 3 + Math.floor((room - 17) / 3));
   return Math.min(5, 2 + Math.floor(room / 3));
 }
 

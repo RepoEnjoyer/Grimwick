@@ -22,7 +22,12 @@ export type EnemyKind =
   | 'paladin'
   | 'cultist'
   | 'banshee'
-  | 'bonebeast';
+  | 'bonebeast'
+  // ===== VOID STAGE (Stage 2) enemies =====
+  | 'void_horror' // floating eye that teleports and fires void bolts
+  | 'void_wraith' // phasing ghost that ignores walls
+  | 'void_leviathan' // huge tanky serpent with multi-shot
+  | 'void_reaper'; // fast scythe-wielder with lifesteal
 
 export type BossKind =
   | 'bell_knight'
@@ -31,9 +36,26 @@ export type BossKind =
   | 'bone_dragon'
   | 'wraith_queen'
   | 'bone_colossus'
-  | 'void_reaper_king'
-  | 'void_leviathan'
-  | 'lich_king';
+  // ===== VOID & ABYSS BOSSES =====
+  | 'void_reaper_king' // Stage 2 mid-boss: teleporting scythe flurry
+  | 'void_leviathan' // Stage 2 final: multi-phase sea serpent
+  | 'lich_king'; // Stage 3 final: boss rush + ultimate lich
+
+// Stage identifiers for thematic progression
+export type Stage = 'crypt' | 'void' | 'abyss';
+
+// Elite enemy affixes — champions spawn with 1-2 of these modifiers
+export type EliteAffix =
+  | 'swift' // +60% move/attack speed
+  | 'colossal' // +200% HP, +50% size, -30% speed
+  | 'volatile' // explodes on death (AoE damage)
+  | 'vampiric' // heals on hit, drops 2x souls
+  | 'splitter' // spawns 2 smaller versions on death
+  | 'resurrective' // revives once at 50% HP
+  | 'ethereal' // 30% chance to phase through attacks
+  | 'vengeful' // gains enrage speed boost at low HP; +30% damage
+  | 'toxic' // leaves poison trail; applies DoT on hit
+  | 'shielded'; // has a regenerating damage shield
 
 export interface Vec2 {
   x: number;
@@ -154,6 +176,29 @@ export interface Player {
   // ===== BLESSED BY GOD =====
   blessedByGodLevel: number; // chance for enemies to drop golden chests
 
+  // ===== COMBO SYSTEM =====
+  comboCount: number; // current kill streak
+  comboTimer: number; // seconds remaining before combo resets
+  comboMax: number; // highest combo this run
+
+  // ===== NEW COMBO SKILL FLAGS =====
+  soulResonanceActive: boolean; // minions deal +50% dmg if 3+ minions
+  frostbiteCurseActive: boolean; // frost slows also mark enemies
+  chainReactionActive: boolean; // chain lightning bounces explode
+  boneStormSurgeActive: boolean; // bone storm doubles if aura active
+  vampiricHungerActive: boolean; // vampiric aura also heals minions
+  soulBatteryOverloadActive: boolean; // soul nova triggers meteor
+  graveEchoActive: boolean; // minion death chance to cast mini grave call
+  phantomResonanceActive: boolean; // spirit walk gives 1s iframes
+  critCascadeActive: boolean; // crits trigger chain lightning
+  toxicSynergyActive: boolean; // marked enemies take 2x DoT
+  shatteredBoneActive: boolean; // bone wall shatters into shards on expire
+  soulConduitActive: boolean; // every 5th soul pickup triggers mini nova
+  bloodlustActive: boolean; // combo milestones enrage minions temporarily
+  arcaneAmplifierActive: boolean; // wands fire 1 extra shot when souls full
+  temporalEchoActive: boolean; // time warp also slows enemy projectiles
+  necroticBloomActive: boolean; // necrotic explosion chains if kills enemy
+
   // bookkeeping
   lastFireTime: number;
   iframes: number;
@@ -161,6 +206,24 @@ export interface Player {
   kills: number;
   soulsCollected: number; // this run
   wandType: string;
+  skin: string; // active skin id (e.g. 'default', 'golden_lich', 'void_walker')
+}
+
+// ===== SKIN DEFINITIONS =====
+export interface SkinDef {
+  id: string;
+  name: string;
+  description: string;
+  // color palette
+  boneColor: string;
+  robeColor: string;
+  robeTrim: string;
+  eyeColor: string;
+  wandTipColor: string;
+  // unlock requirement
+  unlockHint: string;
+  // special VFX flag
+  auraColor?: string;
 }
 
 export interface Projectile {
@@ -212,6 +275,17 @@ export interface Enemy {
   slowTimer: number; // frost/time warp slow effect
   slowMult: number; // multiplier when slowed (0.5 = half speed)
   markedTimer: number; // marked for death (takes bonus damage)
+  // ===== ELITE FIELDS =====
+  isElite: boolean;
+  eliteAffixes: EliteAffix[];
+  eliteShieldHp: number; // for shielded affix
+  eliteShieldMax: number;
+  eliteShieldRegenTimer: number; // delay before shield regenerates
+  resurrectedOnce: boolean; // for resurrective affix
+  poisonTrailTimer: number; // for toxic affix
+  enraged: boolean; // for vengeful affix
+  baseSpeed: number; // for enrage calculations
+  baseDamage: number; // for enrage calculations
   isBoss?: boolean;
   bossKind?: BossKind;
   bossPhase?: number;
@@ -231,6 +305,7 @@ export interface Minion {
   vx: number;
   vy: number;
   hp: number;
+  maxHp: number;
   damage: number;
   speed: number;
   radius: number;
@@ -331,6 +406,8 @@ export interface FloatingText {
   life: number;
   color: string;
   vy: number;
+  size?: number; // font size in px
+  bold?: boolean;
 }
 
 export interface Upgrade {
@@ -370,19 +447,32 @@ export interface PermanentProgress {
     minionPower: number;
     relicLuck: number;
     moveSpeed: number;
-    stage2Damage: number;
-    stage2Health: number;
-    stage2EliteResist: number;
-    stage2SoulMult: number;
+    // ===== NEW PERMANENT UPGRADES =====
+    startingSouls: number; // begin each run with bonus souls
+    iframeDuration: number; // longer invuln after taking a hit
+    pickupRange: number; // larger soul pickup radius
+    critChance: number; // base crit chance %
+    fireRate: number; // base wand fire rate
+    projectileSpeed: number; // faster wand bolts
+    extraLife: number; // revives per run
+    eliteSoulBonus: number; // +bonus souls from elites
+    startingRelic: number; // chance to start with a random relic
+    soulMeterSize: number; // smaller soul meter (faster novas)
+    // ===== STAGE 2 UNLOCKS (locked until Void zone is unlocked) =====
+    stage2Damage: number; // +5% all damage per level
+    stage2Health: number; // +30 max HP per level
+    stage2EliteResist: number; // -10% damage from elites per level
+    stage2SoulMult: number; // +20% soul gain per level
   };
+  // ===== NECROMINION: offline soul farming system =====
   necrominion: {
-    lastCollectedAt: number;
-    storedSouls: number;
+    lastCollectedAt: number; // timestamp (ms) of last collection
+    storedSouls: number; // souls waiting to be collected
     upgradeLevels: {
-      generationRate: number;
-      storageCap: number;
-      conversionEfficiency: number;
-      autoCollect: number;
+      generationRate: number; // souls per hour generated (base 10)
+      storageCap: number; // max stored souls (base 100)
+      conversionEfficiency: number; // % conversion to soul shards (base 50%)
+      autoCollect: number; // auto-collect threshold (0 = manual, levels increase auto %)
     };
   };
 }
@@ -412,6 +502,33 @@ export interface HudSnapshot {
   // soul meter (new)
   soulMeter: number;
   soulMeterMax: number;
+  // combo system (internal — no UI bar, but Bloodlust combo skill triggers on milestones)
+  comboCount: number;
+  comboTimer: number;
+  comboMax: number;
+  // elites slain this run
+  elitesKilled: number;
+  // ===== QOL FIELDS =====
+  timeSurvived: number; // seconds since run start
+  damageTaken: number; // total damage taken this run
+  damageDealt: number; // total damage dealt this run
+  buildPaths: {
+    necromancy: number;
+    wand: number;
+    survival: number;
+    generic: number;
+  };
+  // Stage info
+  stage: 'crypt' | 'void' | 'abyss';
+  stageName: string;
+  stageColor: string;
+  targetId: number | null; // current wand target enemy id (for target indicator)
+  targetX: number; // target enemy x
+  targetY: number; // target enemy y
+  bossSpecialTelegraph: {
+    name: string;
+    timer: number; // seconds until special fires
+  } | null;
   cooldowns: {
     dash: number;
     dashMax: number;
